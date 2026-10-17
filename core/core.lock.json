@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "note": "Everything needed to reproduce the shipped core binary. Nothing here points at a checkout outside this repository: a fresh clone plus Docker is the whole toolchain. `make core` refuses to package an artifact whose sha256 does not match, so this file is the contract between the build and the pak.",
+  "source": {
+    "url": "https://github.com/TASEmulators/freej2me-plus.git",
+    "commit": "baca76a4dda6f30abac67fb4a3db009eed05f91c",
+    "license": "GPL-3.0-or-later",
+    "license_path_in_source": "LICENSE",
+    "note": "One commit feeds both shipped FreeJ2ME-Plus binaries: this libretro core and the jar in runtime/runtime.lock.json. The pipe protocol between them is unversioned, so they are never built from different revisions."
+  },
+  "core": {
+    "id": "freej2me_plus",
+    "source_dir": "src/libretro"
+  },
+  "patch": {
+    "file": "core/leaf.patch",
+    "sha256": "0458c6de44477d64be33e0007d82be4b0b4008528d325dfb41ded71e022e6ddd",
+    "note": "Runs the jar and Java runtime bundled beside the core by absolute path, ties the JVM's life to the frontend with PR_SET_PDEATHSIG, exits the forked child when exec fails, and drops the system-directory firmware entry from the .info file."
+  },
+  "toolchain": {
+    "image": "ghcr.io/utility-muffin-research-kitchen/mlp1-toolchain:latest",
+    "note": "Public image, pullable anonymously. The digest is what the build uses; a tag can move under you and a moved toolchain changes the binary.",
+    "digest": "sha256:66aac16fb8b07e663c9b4d66970f272df195a6eba98dfad8286eabbaa617faf9",
+    "cross_prefix": "aarch64-buildroot-linux-gnu",
+    "target": "aarch64 Cortex-A55, glibc 2.38 (Miniloong Pocket 1 / RK3566)"
+  },
+  "artifact": {
+    "file_name": "freej2me_plus_libretro.so",
+    "info_file_name": "freej2me_plus_libretro.info",
+    "sha256": "36c03fbe32bc4f786e8a06b0144678110aacfd71c63ea0b5e59df3495d27dfe0",
+    "info_sha256": "fd197809f83466bf649b7ad0016e9ebf6bce87c83297f244ff205463f936b680",
+    "size_bytes": 312760,
+    "note": "Recorded from clean builds in the digest-pinned image on 2026-10-17 (FORCE=1 rebuild and a distclean rebuild from a fresh clone agree). CI is the independent verifier; investigate any mismatch rather than overwriting these values."
+  }
+}

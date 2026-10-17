@@ -1,0 +1,67 @@
+{
+  "schema": 1,
+  "note": "Everything needed to reproduce the jar and the Java runtime that ship beside the core. `make runtime` refuses to package either one if its sha256 does not match. The jar comes from the same FreeJ2ME-Plus commit as the core; the build checks that against core/core.lock.json.",
+  "source_commit": "baca76a4dda6f30abac67fb4a3db009eed05f91c",
+  "container": {
+    "image": "ghcr.io/utility-muffin-research-kitchen/mlp1-toolchain:latest",
+    "digest": "sha256:66aac16fb8b07e663c9b4d66970f272df195a6eba98dfad8286eabbaa617faf9",
+    "platform": "linux/arm64",
+    "note": "The same digest-pinned image as the core, run as linux/arm64 so the aarch64 JDKs can execute: jlink, and the CDS dump, which runs the target java binary. The image contributes only a glibc userland and Python for the jar normalizer; the Java toolchain comes from the archives below. On an x86_64 host this needs QEMU binfmt (docker/setup-qemu-action in CI)."
+  },
+  "inputs": [
+    {
+      "name": "zulu-jdk8",
+      "role": "Compiles the jar. Upstream build.xml targets Java 1.5 against ${java.home}/lib/rt.jar, which only a JDK 8 has; upstream CI uses JDK 8 too.",
+      "version": "Zulu 8.96.0.205 (OpenJDK 8u504)",
+      "url": "https://cdn.azul.com/zulu/bin/zulu8.96.0.205-ca-jdk8.0.504-linux_aarch64.tar.gz",
+      "file": "zulu8.96.0.205-ca-jdk8.0.504-linux_aarch64.tar.gz",
+      "sha256": "c79f5fd740702a1336a9e6da2262be03e1a6e4255a94d198b66c49896be6b478",
+      "license": "GPL-2.0-only WITH Classpath-exception-2.0",
+      "shipped": false
+    },
+    {
+      "name": "apache-ant",
+      "role": "Runs upstream build.xml (target jar-libretro).",
+      "version": "1.10.18",
+      "url": "https://archive.apache.org/dist/ant/binaries/apache-ant-1.10.18-bin.tar.gz",
+      "file": "apache-ant-1.10.18-bin.tar.gz",
+      "sha256": "b45db2fdd76d639301550930d33dd7bc672c9d4fdea0fe8cfd2e6a3518388d59",
+      "sha512": "c510d744876d8da48dabc9495b023b6ec5284a0f18b40ee50d98ce099e791ca5c73e3cd4c80d3c90d3efc03f9620be43aad0a373ed47198284f7e3373e0db2c3",
+      "license": "Apache-2.0",
+      "shipped": false
+    },
+    {
+      "name": "zulu-jdk17",
+      "role": "Source of the shipped runtime: its jmods are linked by its own jlink.",
+      "version": "Zulu 17.68.203 (OpenJDK 17.0.20.1+1)",
+      "url": "https://cdn.azul.com/zulu/bin/zulu17.68.203-ca-jdk17.0.20.1-linux_aarch64.tar.gz",
+      "file": "zulu17.68.203-ca-jdk17.0.20.1-linux_aarch64.tar.gz",
+      "sha256": "aa10cb26f73fb1b50dcd72a51851f7eedaf75cb5c18760e521884f96c98defd2",
+      "release_source": ".:git:c8d89ecf367c",
+      "license": "GPL-2.0-only WITH Classpath-exception-2.0",
+      "shipped": true
+    }
+  ],
+  "jar": {
+    "ant_target": "jar-libretro",
+    "file_name": "freej2me_plus-lr.jar",
+    "sha256": "4eea0f945842238f7acf7344a442003404cec2ef780fff283fd6a9a58974644a",
+    "size_bytes": 1248530,
+    "note": "Ant writes entries in directory-scan order with build-time timestamps. scripts/normalize-jar.py rewrites the jar inside the pinned image with sorted entries, fixed timestamps and the image's zlib, so the bytes depend only on the inputs."
+  },
+  "runtime": {
+    "modules": ["java.base", "java.desktop", "jdk.charsets"],
+    "modules_note": "jdeps on the jar reports java.base and java.desktop; jlink adds java.desktop's requirements (java.datatransfer, java.prefs, java.xml). jdk.charsets is not visible to jdeps: FreeJ2ME names Shift_JIS, EUC_KR and Big5 by string, and the core's encoding option passes -Dfile.encoding=Shift_JIS or EUC_KR. Without it those lookups throw.",
+    "jlink_options": ["--strip-java-debug-attributes", "--no-header-files", "--no-man-pages", "--compress=0"],
+    "jlink_options_note": "--strip-debug would also strip native symbols, which needs objcopy and gains nothing: the Zulu libraries carry no debug sections beyond a debuglink. --compress=0 keeps class loading free of inflation on the Cortex-A55; the download is zipped anyway.",
+    "cds": "lib/server/classes.jsa, dumped with -Xshare:dump -Xmx128M -Xms128M (the heap size OpenJDK's own build uses) from jlink's default class list. jlink --generate-cds-archive would also write classes_nocoops.jsa, which only applies to heaps over 32 GB.",
+    "cds_file": "lib/server/classes.jsa",
+    "cds_note": "JDK 17 does not write this archive byte-for-byte reproducibly here: two dumps of the same tree differ in about 20 bytes (header CRCs, one header word, a few archived-heap bytes), and -Xint makes it worse. It is a derived cache of classes already in lib/modules, so tree_sha256 leaves it out and the build only requires that it exists. The JVM validates it at startup (JVM build and modules size) and ignores it, with a warning on stderr, if it does not match.",
+    "directory": "jre",
+    "tree_sha256": "53cbd8cfb3f21a88cc9ba0b137a5f3bffef829ce7681215337261309ea0855b3",
+    "tree_sha256_note": "scripts/tree-hash.py: for each regular file in byte order of its relative path, rel || 0x00 || mode (4 octal digits) || 0x00 || uint64_be(size) || bytes. Symlinks are refused; the build replaces jlink's legal-notice symlinks with copies so the tree is FAT32-safe.",
+    "size_bytes": 81364407,
+    "cds_size_bytes": 11665408,
+    "size_note": "93.0 MB on disk with the CDS archive. For comparison, --compress=2 gives 54 MB before CDS (vs 78 MB here); that trade is for device measurement to settle."
+  }
+}

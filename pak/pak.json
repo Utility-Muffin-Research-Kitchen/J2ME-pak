@@ -1,0 +1,49 @@
+{
+  "name": "J2ME",
+  "platform": "mlp1",
+  "pak_version": "0.1.0",
+  "min_leaf_version": "0.12.0",
+  "provides": {
+    "schema": 1,
+    "systems": [
+      {
+        "id": "J2ME",
+        "name": "J2ME",
+        "patterns": [
+          "J2ME"
+        ],
+        "extensions": [
+          "jar",
+          "kjx"
+        ],
+        "archive_extensions": [],
+        "archive_mode": "none",
+        "playlist_extensions": [],
+        "m3u_generation": "none",
+        "rom_root": "Roms/J2ME",
+        "image_root": "Images/J2ME",
+        "default_core": "freej2me_plus",
+        "alternate_cores": [],
+        "icon_flat": "art/J2ME.png",
+        "icon_photographic": null,
+        "group": null,
+        "bios_directory": null
+      }
+    ],
+    "system_extensions": [],
+    "cores": [
+      {
+        "id": "freej2me_plus",
+        "display_name": "FreeJ2ME-Plus",
+        "type": "retroarch",
+        "libretro_name": "freej2me_plus",
+        "file_name": "cores/freej2me_plus_libretro.so",
+        "info_name": "info/freej2me_plus_libretro.info",
+        "config_folder": "FreeJ2ME-Plus",
+        "supports_menu": true,
+        "supports_savestate": false,
+        "supports_disk_control": false
+      }
+    ]
+  }
+}

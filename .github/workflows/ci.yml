@@ -1,0 +1,104 @@
+name: ci
+
+# Builds the pinned core, jar and runtime, packages the pak, validates it
+# against the content-pak contract at a pinned leaf-contracts SHA, and runs the
+# packaged core in an arm64 container.
+#
+# Nothing here assumes a UMRK workspace layout: the runner starts from a bare
+# clone of this repository, exactly like an outside contributor's machine.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  # Pin the contract, not a branch. Bumping it is a reviewed commit here.
+  CONTRACT_REF: b74130056342efdd6bdeb9ed7204968dd294fbde
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check out the pinned contract
+        uses: actions/checkout@v4
+        with:
+          repository: Utility-Muffin-Research-Kitchen/leaf-contracts
+          ref: ${{ env.CONTRACT_REF }}
+          path: .contract
+
+      - name: Validate pak.json against CONTENT-1
+        run: make validate CONTRACT_DIR="$PWD/.contract"
+
+      - name: Refuse a launch.sh
+        run: |
+          # A pure content pak. A launch.sh would quietly turn it into a
+          # hybrid and change how both the storefront and the launcher treat it.
+          if [ -e pak/launch.sh ]; then
+            echo "pak/launch.sh present: this is meant to be a pure content pak" >&2
+            exit 1
+          fi
+
+      - name: Refuse a path that escapes the repository
+        run: |
+          # Someone has to be able to clone this repository and build. A '../'
+          # in the build system means they cannot.
+          if grep -REn '\.\./' Makefile core runtime scripts tests .github 2>/dev/null \
+               | grep -v '^\S*:\s*#'; then
+            echo "build system references a path outside the repository" >&2
+            exit 1
+          fi
+          echo "no paths outside the repository"
+
+  build:
+    runs-on: ubuntu-latest
+    # The full build downloads about 300 MB of pinned JDKs. Keep it off the PR
+    # path but never let main drift.
+    if: github.event_name != 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+
+      # The runtime build and the smoke test run linux/arm64 containers.
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Build the pinned core
+        run: make core
+
+      - name: Build the pinned jar and runtime
+        run: make runtime
+
+      - name: Package and hash
+        run: make dist-pakrat
+
+      - name: Corresponding source (GPLv3) for the core and the jar
+        run: make dist-source
+
+      - name: Check out the pinned contract
+        uses: actions/checkout@v4
+        with:
+          repository: Utility-Muffin-Research-Kitchen/leaf-contracts
+          ref: ${{ env.CONTRACT_REF }}
+          path: .contract
+
+      - name: Validate the PACKAGED pak strictly
+        run: |
+          python3 scripts/validate-pak.py \
+            --contract "$PWD/.contract" \
+            --pak build/package/J2ME.pak --packaged
+
+      - name: Run the packaged core off-device
+        run: make smoke
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: J2ME-pak
+          path: |
+            build/dist/J2ME.mlp1.pak.zip
+            build/dist/freej2me-plus-corresponding-source.tar.gz
+            build/dist/core.lock.json
+            build/dist/runtime.lock.json

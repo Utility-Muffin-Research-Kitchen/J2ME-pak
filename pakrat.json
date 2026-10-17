@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "kind": "content",
+
+  "id": "org.umrk.j2me",
+  "name": "J2ME",
+  "summary": "Java phone games from the 2000s, as their own console.",
+  "description": "Adds a J2ME system with its own ROM folder, the FreeJ2ME-Plus libretro core that runs it, and the Java runtime that core needs. There is no app to open: installing this pak makes a J2ME tile appear alongside your consoles, and your .jar and .kjx games go in Roms/J2ME. Removing the pak removes the core and its Java runtime with it.",
+  "author": "Utility Muffin Research Kitchen",
+  "repo_url": "https://github.com/Utility-Muffin-Research-Kitchen/J2ME-pak",
+  "categories": ["emulation", "content"],
+
+  "leaf": {
+    "packages": [
+      {
+        "platform": "mlp1",
+        "version": "0.1.0",
+        "min_leaf_version": "0.12.0",
+        "artifact_name": "J2ME.mlp1.pak.zip",
+        "install_name": "J2ME.pak",
+        "runtime_manifest_path": "pak.json",
+        "package_dir": "build/package/J2ME.pak",
+        "build_command": ["make", "package-mlp1"]
+      }
+    ]
+  }
+}

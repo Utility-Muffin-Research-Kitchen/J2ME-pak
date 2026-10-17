@@ -1,0 +1,257 @@
+diff --git a/src/libretro/freej2me_libretro.c b/src/libretro/freej2me_libretro.c
+index d151750c..0955fbec 100755
+--- a/src/libretro/freej2me_libretro.c
++++ b/src/libretro/freej2me_libretro.c
+@@ -14,6 +14,9 @@
+ 	You should have received a copy of the GNU General Public License
+ 	along with FreeJ2ME.  If not, see http://www.gnu.org/licenses/
+ */
++#if defined(__linux__)
++#define _GNU_SOURCE /* Leaf: dladdr() */
++#endif
+ #include <stdlib.h>
+ #include <string.h>
+ #include <errno.h>
+@@ -22,6 +25,10 @@
+ #include <unistd.h>
+ #include <sys/wait.h>
+ #include <signal.h>
++#if defined(__linux__)
++#include <dlfcn.h>
++#include <sys/prctl.h>
++#endif
+ #elif _WIN32
+ #include <windows.h>
+ #include <tlhelp32.h>
+@@ -44,6 +51,25 @@ const char *freej2meapp = "freej2me_plus-lr.jar";
+ const char *freej2meapp = "freej2me_plus-lr.jar";
+ #endif
+ 
++#if defined(__linux__)
++/*
++ * Leaf: a packaged core can carry its own jar and Java runtime beside the .so:
++ *
++ *   cores/freej2me_plus_libretro.so
++ *   cores/freej2me_plus-lr.jar
++ *   cores/jre/bin/java
++ *
++ * When both are present the core runs them by absolute path, so neither the
++ * frontend's system directory nor PATH has to hold Java. When either is
++ * missing these stay empty and the upstream lookup below applies unchanged.
++ */
++#define LEAF_NUM_ARGUMENTS 11
++static char leafJar[PATH_MAX_LENGTH];
++static char leafJava[PATH_MAX_LENGTH];
++static char leafLibraryPath[PATH_MAX_LENGTH * 3];
++extern char **environ;
++#endif
++
+ retro_environment_t Environ;
+ retro_video_refresh_t Video;
+ retro_audio_sample_t Audio;
+@@ -345,6 +371,83 @@ int freej2me_present(const char *path)
+ #endif
+ }
+ 
++#if defined(__linux__)
++/* Leaf: fill leafJar, leafJava and leafLibraryPath from the directory holding this core. */
++static void leaf_find_bundle(void)
++{
++	Dl_info self;
++	char coreDir[PATH_MAX_LENGTH];
++	char jreDir[PATH_MAX_LENGTH];
++	char *base;
++	const char *inherited = getenv("LD_LIBRARY_PATH");
++	int n;
++
++	leafJar[0] = '\0';
++	leafJava[0] = '\0';
++	leafLibraryPath[0] = '\0';
++
++	if (!dladdr((void *)&leaf_find_bundle, &self) || !self.dli_fname) { return; }
++	if (!realpath(self.dli_fname, coreDir)) { return; }
++	if (!(base = strrchr(coreDir, '/'))) { return; }
++	*base = '\0';
++
++	n = snprintf(jreDir, sizeof(jreDir), "%s/jre", coreDir);
++	if (n < 0 || (size_t)n >= sizeof(jreDir)) { return; }
++	n = snprintf(leafJar, sizeof(leafJar), "%s/%s", coreDir, freej2meapp);
++	if (n < 0 || (size_t)n >= sizeof(leafJar)) { leafJar[0] = '\0'; return; }
++	n = snprintf(leafJava, sizeof(leafJava), "%s/bin/java", jreDir);
++	if (n < 0 || (size_t)n >= sizeof(leafJava) || access(leafJar, R_OK) != 0 || access(leafJava, X_OK) != 0)
++	{
++		log_fn(RETRO_LOG_INFO, "No bundled jar and Java runtime in %s; using the system directory and PATH.\n", coreDir);
++		leafJar[0] = '\0';
++		leafJava[0] = '\0';
++		return;
++	}
++
++	/*
++	 * The JRE's own libraries first, then whatever the frontend was given.
++	 * lib/server leads: the java launcher re-executes itself to fix up a
++	 * LD_LIBRARY_PATH that names a libjvm directory without starting with
++	 * its own.
++	 */
++	if (inherited && *inherited)
++	{
++		n = snprintf(leafLibraryPath, sizeof(leafLibraryPath),
++			"LD_LIBRARY_PATH=%s/lib/server:%s/lib:%s", jreDir, jreDir, inherited);
++	}
++	else
++	{
++		n = snprintf(leafLibraryPath, sizeof(leafLibraryPath),
++			"LD_LIBRARY_PATH=%s/lib/server:%s/lib", jreDir, jreDir);
++	}
++	if (n < 0 || (size_t)n >= sizeof(leafLibraryPath))
++	{
++		n = snprintf(leafLibraryPath, sizeof(leafLibraryPath),
++			"LD_LIBRARY_PATH=%s/lib/server:%s/lib", jreDir, jreDir);
++	}
++
++	log_fn(RETRO_LOG_INFO, "Using the bundled Java runtime: %s\n", leafJava);
++}
++
++/* Leaf: the frontend's environment with LD_LIBRARY_PATH replaced. Built
++ * before fork() so the child only has to call execve(). */
++static char **leaf_child_environment(void)
++{
++	size_t count = 0, kept = 0, i;
++	char **env;
++
++	while (environ && environ[count]) { count++; }
++	if (!(env = malloc(sizeof(char *) * (count + 2)))) { return NULL; }
++	for (i = 0; i < count; i++)
++	{
++		if (strncmp(environ[i], "LD_LIBRARY_PATH=", 16) != 0) { env[kept++] = environ[i]; }
++	}
++	env[kept++] = leafLibraryPath;
++	env[kept] = NULL;
++	return env;
++}
++#endif
++
+ // Fast-forward state tracker
+ void check_fast_forwarding(void)
+ {
+@@ -859,6 +962,33 @@ void retro_init(void)
+ 		Environ(RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY, &systemPath);
+ 	}
+ 
++#if defined(__linux__)
++	leaf_find_bundle();
++	if (leafJava[0])
++	{
++		/*
++		 * Leaf: run the bundled runtime on the bundled jar by absolute path.
++		 * Headless, since frames travel over the pipe and there is no X
++		 * display. stdout is that pipe, so VM messages and unified logging
++		 * warnings, which default to stdout, go to stderr instead.
++		 */
++		int arg = 0;
++		params = (char**)malloc(sizeof(char*) * LEAF_NUM_ARGUMENTS);
++		params[arg++] = strdup(leafJava);
++		params[arg++] = strdup("-Djava.awt.headless=true");
++		params[arg++] = strdup("-XX:+DisplayVMOutputToStderr");
++		params[arg++] = strdup("-Xlog:disable");
++		params[arg++] = strdup("-Xlog:all=warning:stderr");
++		params[arg++] = strdup(supported_encodings[characterEncoding]);
++		params[arg++] = strdup("-jar");
++		params[arg++] = strdup(leafJar);
++		params[arg++] = strdup(resArg[0]);
++		params[arg++] = strdup(resArg[1]);
++		params[arg] = NULL;
++	}
++	else
++#endif
++	{
+ 	/* Check if freej2me's app actually exists and notify the user if it doesn't */
+ 	char *freej2mePath = malloc(sizeof(char) * PIPE_MAX_LEN);
+ 	snprintf(freej2mePath, sizeof(char) * PIPE_MAX_LEN, "%s/%s", systemPath, freej2meapp);
+@@ -886,6 +1016,7 @@ void retro_init(void)
+ 	params[4] = strdup(resArg[0]);
+ 	params[5] = strdup(resArg[1]);
+ 	params[6] = NULL; // Null-terminate the array
++	}
+ 
+ 	log_fn(RETRO_LOG_INFO, "Preparing to open FreeJ2ME-Plus' Java app.\n");
+ 
+@@ -1566,10 +1697,28 @@ bool javaOpen(char *cmd, char **params)
+ 	pipe(pRead); /* 0: pRead, 1: pWrite */
+ 	pipe(pWrite);
+ 
++#if defined(__linux__)
++	pid_t leafParent = getpid();
++	char **leafEnv = leafJava[0] ? leaf_child_environment() : NULL;
++#endif
++
+ 	pid = fork();
+ 
+ 	if(pid==0) /* child */
+ 	{
++#if defined(__linux__)
++		/*
++		 * Leaf: die with the frontend. A frontend that is killed outright
++		 * never reaches retro_deinit(), and a supervisor that kills it by
++		 * pid rather than by process group would otherwise leave the JVM
++		 * running with the audio device and its heap. The signal follows
++		 * the thread that called fork(), which is the frontend's main
++		 * thread. The getppid() check covers a parent that died before
++		 * prctl() took effect.
++		 */
++		prctl(PR_SET_PDEATHSIG, SIGKILL);
++		if (getppid() != leafParent) { _exit(127); }
++#endif
+ 
+ 		dup2(pWrite[0], fd_stdin);  /* read from parent pWrite */
+ 		dup2(pRead[1], fd_stdout);  /* write to parent pRead */
+@@ -1579,10 +1728,22 @@ bool javaOpen(char *cmd, char **params)
+ 
+ 		chdir(systemPath);
+ 
++#if defined(__linux__)
++		if (leafEnv) { execve(cmd, params, leafEnv); }
++		else { execvp(cmd, params); }
++
++		/*
++		 * Leaf: exec failed. Leave the forked copy of the frontend now;
++		 * returning from here would run a second frontend on the same
++		 * display and pipes.
++		 */
++		_exit(127);
++#else
+ 		execvp(cmd, params);
+ 
+ 		/* execvp failure! */
+ 		retro_deinit();
++#endif
+ 	}
+ 
+ 	if(pid>0) /* parent */
+@@ -1591,6 +1752,10 @@ bool javaOpen(char *cmd, char **params)
+ 		close(pWrite[0]);
+ 	}
+ 
++#if defined(__linux__)
++	free(leafEnv);
++#endif
++
+ 	if(pid<0) /* error */
+ 	{
+ 		Environ(RETRO_ENVIRONMENT_SET_MESSAGE_EXT, (void*)&messages[IMPROPER_CHILDPROC_MSG]);
+diff --git a/src/libretro/freej2me_plus_libretro.info b/src/libretro/freej2me_plus_libretro.info
+index 9bbcfc95..e925f515 100644
+--- a/src/libretro/freej2me_plus_libretro.info
++++ b/src/libretro/freej2me_plus_libretro.info
+@@ -26,9 +26,8 @@ hw_render = "false"
+ core_options = "true"
+ 
+ # BIOS / Firmware
+-firmware_count = 1
+-firmware0_desc = "freej2me_plus-lr.jar (Main Application)"
+-firmware0_path = "freej2me_plus-lr.jar"
+-firmware0_opt = "false"
++# Leaf: freej2me_plus-lr.jar and its Java runtime ship beside the core, so
++# nothing has to be placed in the system directory.
++firmware_count = 0
+ 
+ description = "A fork of FreeJ2ME with improved compatibility and better libretro support. This core emulates Java ME applications and games for Java-based mobile phones."
