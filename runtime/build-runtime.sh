@@ -62,6 +62,10 @@ input() { lock_get "inputs.$1.$2"; }
 JDK8="$(input 0 file)"
 ANT="$(input 1 file)"
 JDK17="$(input 2 file)"
+JDK8_ROOT="$(input 0 root)"
+ANT_ROOT="$(input 1 root)"
+JDK17_ROOT="$(input 2 root)"
+JDK17_SOURCE="$(input 2 release_source)"
 
 fetch_input() {
   local index="$1" file url expected actual
@@ -108,9 +112,16 @@ else
       tar -xzf /downloads/'"$JDK8"'
       tar -xzf /downloads/'"$ANT"'
       tar -xzf /downloads/'"$JDK17"'
-      JDK8_HOME="/opt/java/$(basename '"$JDK8"' .tar.gz)"
-      ANT_HOME="/opt/java/$(basename '"$ANT"' -bin.tar.gz)"
-      JDK17_HOME="/opt/java/$(basename '"$JDK17"' .tar.gz)"
+      JDK8_HOME=/opt/java/'"$JDK8_ROOT"'
+      ANT_HOME=/opt/java/'"$ANT_ROOT"'
+      JDK17_HOME=/opt/java/'"$JDK17_ROOT"'
+
+      # The shipped runtime has to be the build whose source make dist-source
+      # publishes. Its release file names that source; jlink drops the line.
+      grep -qxF "SOURCE=\"'"$JDK17_SOURCE"'\"" "$JDK17_HOME/release" || {
+        echo "build-runtime: $JDK17_HOME/release does not name source '"$JDK17_SOURCE"'" >&2
+        exit 1
+      }
 
       cd /work/src
       JAVA_HOME="$JDK8_HOME" "$ANT_HOME/bin/ant" -noinput -buildfile build.xml '"$ANT_TARGET"'

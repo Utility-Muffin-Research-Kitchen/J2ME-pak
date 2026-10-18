@@ -55,8 +55,9 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
-    # The full build downloads about 300 MB of pinned JDKs. Keep it off the PR
-    # path but never let main drift.
+    # The full build downloads about 300 MB of pinned JDKs, and dist-source
+    # another 110 MB of runtime source. Keep it off the PR path but never let
+    # main drift.
     if: github.event_name != 'pull_request'
     steps:
       - uses: actions/checkout@v4
@@ -75,7 +76,7 @@ jobs:
       - name: Package and hash
         run: make dist-pakrat
 
-      - name: Corresponding source (GPLv3) for the core and the jar
+      - name: Corresponding source for the core, the jar and the runtime
         run: make dist-source
 
       - name: Check out the pinned contract
@@ -100,5 +101,6 @@ jobs:
           path: |
             build/dist/J2ME.mlp1.pak.zip
             build/dist/freej2me-plus-corresponding-source.tar.gz
+            build/dist/OpenJDK17U-jdk-sources_*.tar.gz
             build/dist/core.lock.json
             build/dist/runtime.lock.json

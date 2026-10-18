@@ -9,7 +9,7 @@
 #   make runtime        build the pinned jar and the jlink-trimmed Java runtime
 #   make package-mlp1   assemble build/package/J2ME.pak
 #   make dist-pakrat    zip it into build/dist/J2ME.mlp1.pak.zip
-#   make dist-source    GPL corresponding source for the core and the jar
+#   make dist-source    GPL corresponding source for the core, the jar and the runtime
 #   make validate       check pak.json against the content-pak contract
 #   make smoke          run the packaged core in an arm64 container (no device)
 #   make check          validate + package + validate the packaged tree + smoke
@@ -74,9 +74,10 @@ dist-pakrat: package-mlp1
 	@python3 -c "import hashlib,sys;p=sys.argv[1];print('sha256', hashlib.sha256(open(p,'rb').read()).hexdigest())" "$(ARTIFACT)"
 	@echo "wrote $(ARTIFACT)"
 
-# GPL corresponding source for the core and the jar. Publish it next to the
-# artifact; a written offer is weaker than the source. The Java runtime's
-# source is not in it yet: see LICENSES/README.md.
+# GPL corresponding source for every binary the pak ships: one archive for the
+# core and the jar, built from the pinned FreeJ2ME-Plus commit, and Adoptium's
+# own source tarball for the Java runtime. Publish both next to the artifact;
+# a written offer is weaker than the source.
 dist-source:
 	@mkdir -p "$(DIST)"
 	@SRC_DIR="$$("$(REPO_ROOT)/scripts/fetch-source.sh")" && \
@@ -84,12 +85,14 @@ dist-source:
 		--repo "$(REPO_ROOT)" \
 		--source "$$SRC_DIR" \
 		--output "$(DIST)/freej2me-plus-corresponding-source.tar.gz"
+	@RUNTIME_SRC="$$("$(REPO_ROOT)/runtime/fetch-runtime-source.sh")" && \
+	  cp "$$RUNTIME_SRC" "$(DIST)/$$(basename "$$RUNTIME_SRC")" && \
+	  echo "wrote $(DIST)/$$(basename "$$RUNTIME_SRC") (sha256 checked against runtime.lock.json)"
 	@cp "$(REPO_ROOT)/core/core.lock.json" "$(DIST)/core.lock.json"
 	@cp "$(REPO_ROOT)/runtime/runtime.lock.json" "$(DIST)/runtime.lock.json"
 	@python3 -c "import hashlib,sys;p=sys.argv[1];print('sha256', hashlib.sha256(open(p,'rb').read()).hexdigest())" \
 		"$(DIST)/freej2me-plus-corresponding-source.tar.gz"
 	@echo "wrote $(DIST)/freej2me-plus-corresponding-source.tar.gz"
-	@echo "note: the Java runtime's corresponding source is not included; see LICENSES/README.md"
 
 $(CONTRACT_DIR):
 	@mkdir -p "$(BUILD)"

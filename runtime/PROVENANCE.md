@@ -28,8 +28,10 @@ Two builds of the same commit then give the same bytes.
 
 ## The runtime
 
-**Azul Zulu 17.68.203 (OpenJDK 17.0.20.1+1)** for linux aarch64, from Azul's
-CDN, pinned by sha256. Its own `jlink` links its own `jmods`:
+**Eclipse Temurin 17.0.20.1+1** (OpenJDK 17.0.20.1+1, HotSpot) for linux
+aarch64, from Adoptium's GitHub release, pinned by sha256. Adoptium publishes
+the source of that build with it; see [Corresponding source](#corresponding-source).
+Its own `jlink` links its own `jmods`:
 
 ```
 jlink --add-modules java.base,java.desktop,jdk.charsets \
@@ -54,11 +56,12 @@ The jar carries its own copies of some `javax.xml` and `org.w3c.dom` classes;
 Measured on the MLP1 on 2026-10-17 with a probe MIDlet: seconds from the
 launch request to the MIDlet's first paint, one cold run (page cache dropped)
 and two warm runs per variant, all with the `3830c72` core (four MIDI
-synthesizers).
+synthesizers). The runtime then was Azul's Zulu build of the same OpenJDK
+version, so the sizes below are Zulu's.
 
 | Runtime | On the card | Cold | Warm |
 | --- | --- | --- | --- |
-| **Shipped:** `--compress=2` with CDS | 67.3 MB (55.6 MB + 11.7 MB `classes.jsa`) | 8.44 | 5.44, 5.54 |
+| **Shipped options:** `--compress=2` with CDS | 67.3 MB (55.6 MB + 11.7 MB `classes.jsa`) | 8.44 | 5.44, 5.54 |
 | `--compress=0` with CDS | 93.0 MB | 8.54 | 5.64, 5.60 |
 | `--compress=2`, no CDS | 55.6 MB | 8.70 | 5.79, 5.76 |
 | `--compress=0`, no CDS | 81.4 MB | 9.27 | 5.88, 5.79 |
@@ -70,6 +73,9 @@ classes Java needs to start, and the compressed image was no slower in any
 paired run, within noise. It is 25.7 MB smaller on the card. The download
 grows by about 6 MB, because zip can't shrink an image that is already
 compressed.
+
+The Temurin runtime that ships now uses the same options and comes to 67.7 MB
+(56.1 MB + 11.7 MB). It has not been timed on the device yet.
 
 ### CDS
 
@@ -115,5 +121,23 @@ and is untested.
 
 ## Corresponding source
 
-The jar is covered by `make dist-source` together with the core. The runtime
-is not covered yet; see `LICENSES/README.md`.
+The jar is covered by `make dist-source` together with the core, in
+`freej2me-plus-corresponding-source.tar.gz`.
+
+The runtime's source is Adoptium's `OpenJDK17U-jdk-sources_17.0.20.1_1.tar.gz`
+(109 MB), pinned by sha256 as `runtime_source` in `runtime.lock.json`.
+`runtime/fetch-runtime-source.sh` downloads and checks it, and
+`make dist-source` copies it beside the pak. It is the source of the JDK the
+runtime is linked from:
+
+| | Source tarball | aarch64 JDK |
+| --- | --- | --- |
+| Adoptium metadata `openjdk_source` | `adoptium/jdk17u@79597447bd94ff9f` | same |
+| Adoptium metadata `scmRef` | `jdk-17.0.20.1+1_adopt` | same |
+| Adoptium metadata `buildRef` (temurin-build) | `e6ba7dec3d076540` | same |
+| `release` file `SOURCE` | - | `.:git:79597447bd94` |
+
+`runtime/build-runtime.sh` checks that `SOURCE` line before linking, so a
+swapped JDK can't ship with the wrong source beside it. jlink only selects and
+links modules from that JDK, so the source of the whole JDK covers the trimmed
+runtime.

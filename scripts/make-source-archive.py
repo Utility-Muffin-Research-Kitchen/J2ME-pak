@@ -4,8 +4,8 @@
 Both come from one FreeJ2ME-Plus commit. The archive holds that commit's tree
 exactly as upstream published it, the hash-pinned Leaf patch applied to the
 core, both locks, and every script the two builds run, so the shipped core and
-jar can be rebuilt from it. The Java runtime's source is a separate matter; see
-LICENSES/README.md.
+jar can be rebuilt from it. The Java runtime's source is Adoptium's own tarball,
+which `make dist-source` publishes beside this one.
 """
 from __future__ import annotations
 

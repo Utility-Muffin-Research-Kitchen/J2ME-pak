@@ -134,8 +134,8 @@ green LCD backlight effect is off, two MIDI synthesizers start instead of four
 (about half a second faster at every launch), and the pointer can follow the left
 stick. [`core/PROVENANCE.md`](core/PROVENANCE.md) explains each change.
 
-The runtime is Azul Zulu 17 linked down to three modules, about 67 MB on the
-card. [`runtime/PROVENANCE.md`](runtime/PROVENANCE.md) says what was kept and
+The runtime is Eclipse Temurin 17 linked down to three modules, about 68 MB on
+the card. [`runtime/PROVENANCE.md`](runtime/PROVENANCE.md) says what was kept and
 why.
 
 ## Requirements
@@ -148,7 +148,7 @@ why.
 
 Every input is pinned. `core/core.lock.json` names the FreeJ2ME-Plus commit,
 the patch and the toolchain image digest. `runtime/runtime.lock.json` names the
-JDK 8 and Ant that compile the jar and the Zulu 17 JDK the runtime is linked
+JDK 8 and Ant that compile the jar and the Temurin 17 JDK the runtime is linked
 from, each by sha256. Both builds refuse to package an artifact whose hash
 doesn't match its lock.
 
@@ -158,7 +158,7 @@ doesn't match its lock.
 | `make runtime` | the jar and the trimmed runtime, in the same image as `linux/arm64` |
 | `make package-mlp1` | assemble `build/package/J2ME.pak` |
 | `make dist-pakrat` | zip it to `build/dist/J2ME.mlp1.pak.zip` and print its sha256 |
-| `make dist-source` | GPL corresponding source for the core and the jar |
+| `make dist-source` | GPL corresponding source for the core, the jar and the runtime |
 | `make validate` | check `pak/pak.json` against the public content-pak contract |
 | `make smoke` | load the packaged core in an arm64 container and check what the patch promises |
 | `make check` | validate, package, validate the package strictly, smoke |
@@ -170,6 +170,6 @@ that is native. On an x86_64 machine, install QEMU binfmt first.
 ## Licensing
 
 The core and the jar are GPL-3.0-or-later and the runtime is GPL-2.0 with the
-Classpath Exception. [`LICENSES/README.md`](LICENSES/README.md) lists every
-component and what publishing this pak obliges you to do, including one item
-still open for the runtime.
+Classpath Exception. `make dist-source` writes the corresponding source of all
+three, to publish beside the pak. [`LICENSES/README.md`](LICENSES/README.md)
+lists every component and what publishing this pak obliges you to do.

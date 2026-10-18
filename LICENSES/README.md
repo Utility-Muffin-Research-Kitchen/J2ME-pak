@@ -10,7 +10,7 @@ redistributing the built pak.
 | ObjectWeb ASM, compiled into the jar | BSD-3-Clause | the second half of `CORE-LICENSE.txt` |
 | JLayer, compiled into the jar | LGPL-2.1 | upstream README; headers in `src/javazoom/` |
 | MascotME (MascotCapsule V3 renderer), compiled into the jar | MIT | upstream README; headers in its sources |
-| The Java runtime (`cores/jre/`), Azul Zulu 17 built from OpenJDK | **GPL-2.0-only WITH Classpath-exception-2.0** | `RUNTIME-LICENSE.txt`; in the package `cores/jre/legal/` per module |
+| The Java runtime (`cores/jre/`), Eclipse Temurin 17 built from OpenJDK | **GPL-2.0-only WITH Classpath-exception-2.0** | `RUNTIME-LICENSE.txt`; in the package `cores/jre/legal/` per module |
 | Third-party code inside the runtime (FreeType, HarfBuzz, libpng, libjpeg, giflib, Little CMS, ICU data, ...) | Various | `cores/jre/legal/<module>/*.md` in the package |
 | This repository's build system, manifests, scripts | MIT (see `REPO-LICENSE.txt`) | - |
 | `pak/art/J2ME.png` | CC BY-SA 4.0 | `../pak/art/LICENSE-ASSETS.md` |
@@ -39,14 +39,22 @@ pak covers its core:
   publish **alongside** the pak: the upstream tree at the pinned commit, the
   patch, both locks, and the build scripts.
 
-**The Java runtime is not covered yet.** It is Azul's Zulu 17.0.20.1 build of
-OpenJDK, trimmed with jlink. Azul's `release` file names its source as
-`.:git:c8d89ecf367c`, a commit that is not in `openjdk/jdk17u`, and Azul does
-not publish a source bundle at a stable URL. Before this pak is published,
-decide how to meet the runtime's source obligation: obtain Azul's
-corresponding source for that build and publish it beside the pak, or build
-the runtime from a public OpenJDK tag instead. A written offer alone is weaker
-than shipping the source.
+**The Java runtime** is Eclipse Temurin 17.0.20.1+1, trimmed with jlink.
+Adoptium publishes the source of each Temurin release beside its binaries, so
+it is covered the same way:
+
+- `runtime/runtime.lock.json` pins the aarch64 JDK and Adoptium's source
+  tarball, `OpenJDK17U-jdk-sources_17.0.20.1_1.tar.gz`, by sha256. Both match
+  the `.sha256.txt` files Adoptium publishes with them.
+- That tarball is the source of that JDK. Adoptium's metadata for both names
+  the same `adoptium/jdk17u` commit (`79597447bd94ff9f8216e2e3a573d5261ee49f2e`,
+  tag `jdk-17.0.20.1+1_adopt`) and the same `temurin-build` scripts commit.
+  The JDK's own `release` file names that commit too, and the build refuses a
+  JDK whose `release` file says otherwise.
+- jlink only selects and links modules from that JDK; it adds no code of its
+  own. The source of the whole JDK covers the trimmed runtime.
+- `make dist-source` checks the tarball against the lock and copies it to
+  `build/dist/` beside the pak, to publish **alongside** it.
 
 If you fork this repository and change a pin, republish the source for your
 pin: the obligation follows the binary you distributed, not the one upstream
