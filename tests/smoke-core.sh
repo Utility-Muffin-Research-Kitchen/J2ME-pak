@@ -25,20 +25,25 @@ BUILD_DIR="${BUILD_DIR:-$REPO_ROOT/build}"
 PACKAGE="$BUILD_DIR/package/J2ME.pak"
 SRC_DIR="$BUILD_DIR/freej2me-src"
 LOCK="$REPO_ROOT/core/core.lock.json"
+RUNTIME_LOCK="$REPO_ROOT/runtime/runtime.lock.json"
 
 die() { echo "smoke-core: $*" >&2; exit 1; }
 
 [ -f "$PACKAGE/cores/freej2me_plus_libretro.so" ] || die "no package; run make package-mlp1 first"
 [ -f "$SRC_DIR/src/libretro/libretro.h" ] || die "no source checkout; run make core first"
 
-read -r IMAGE DIGEST CROSS < <(python3 -c '
+# The arm64 container is the runtime lock's: the linux/arm64 manifest of the
+# toolchain index, pinned directly so it never collides with the amd64 variant
+# the core build pulled (see the note in runtime.lock.json).
+read -r IMAGE DIGEST PLATFORM CROSS < <(python3 -c '
 import json, sys
-t = json.load(open(sys.argv[1]))["toolchain"]
-print(t["image"], t["digest"], t["cross_prefix"])
-' "$LOCK")
+c = json.load(open(sys.argv[1]))["container"]
+t = json.load(open(sys.argv[2]))["toolchain"]
+print(c["image"], c["digest"], c["platform"], t["cross_prefix"])
+' "$RUNTIME_LOCK" "$LOCK")
 IMAGE_REF="${IMAGE%%:*}@${DIGEST}"
 
-docker run --rm --init --platform linux/arm64 \
+docker run --rm --init --platform "$PLATFORM" \
   -v "$PACKAGE":/media/sdcard1/Apps/mlp1/J2ME.pak:ro \
   -v "$REPO_ROOT/tests":/tests:ro \
   -v "$SRC_DIR/src/libretro":/harness-include:ro \
