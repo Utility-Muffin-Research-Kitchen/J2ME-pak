@@ -1,5 +1,5 @@
 diff --git a/src/libretro/freej2me_libretro.c b/src/libretro/freej2me_libretro.c
-index d151750c..0955fbec 100755
+index d151750..db03cc9 100755
 --- a/src/libretro/freej2me_libretro.c
 +++ b/src/libretro/freej2me_libretro.c
 @@ -14,6 +14,9 @@
@@ -49,7 +49,15 @@ index d151750c..0955fbec 100755
  retro_environment_t Environ;
  retro_video_refresh_t Video;
  retro_audio_sample_t Audio;
-@@ -345,6 +371,83 @@ int freej2me_present(const char *path)
+@@ -133,6 +159,7 @@ bool uses_mouse = true;
+ bool uses_pointer = false;
+ bool booted = false;
+ bool restarting = false;
++bool leafPointerOnLeftStick = false; /* Leaf: freej2me_pointerstick */
+ bool useAnalogAsEntireKeypad = false; // Enhancement for games like Time Crisis Elite which use the keypad's diagonals exclusively, and not 2+4, 6+8, etc.
+ float analogDeadzone = 0.10f; // Additional Deadzone over libretro for input reads
+ 
+@@ -345,6 +372,83 @@ int freej2me_present(const char *path)
  #endif
  }
  
@@ -133,7 +141,22 @@ index d151750c..0955fbec 100755
  // Fast-forward state tracker
  void check_fast_forwarding(void)
  {
-@@ -859,6 +962,33 @@ void retro_init(void)
+@@ -623,6 +727,14 @@ static void check_variables()
+ 	}
+ 
+ 
++	/* Leaf: a device with one stick can move the pointer with the left one. */
++	var.key = "freej2me_pointerstick";
++	if (Environ(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
++	{
++		leafPointerOnLeftStick = !strcmp(var.value, "left");
++	}
++
++
+ 	var.key = "freej2me_pointerxspeed";
+ 	if (Environ(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
+ 	{
+@@ -859,6 +971,33 @@ void retro_init(void)
  		Environ(RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY, &systemPath);
  	}
  
@@ -167,7 +190,7 @@ index d151750c..0955fbec 100755
  	/* Check if freej2me's app actually exists and notify the user if it doesn't */
  	char *freej2mePath = malloc(sizeof(char) * PIPE_MAX_LEN);
  	snprintf(freej2mePath, sizeof(char) * PIPE_MAX_LEN, "%s/%s", systemPath, freej2meapp);
-@@ -886,6 +1016,7 @@ void retro_init(void)
+@@ -886,6 +1025,7 @@ void retro_init(void)
  	params[4] = strdup(resArg[0]);
  	params[5] = strdup(resArg[1]);
  	params[6] = NULL; // Null-terminate the array
@@ -175,7 +198,90 @@ index d151750c..0955fbec 100755
  
  	log_fn(RETRO_LOG_INFO, "Preparing to open FreeJ2ME-Plus' Java app.\n");
  
-@@ -1566,10 +1697,28 @@ bool javaOpen(char *cmd, char **params)
+@@ -920,6 +1060,20 @@ bool retro_load_game(const struct retro_game_info *info)
+ {
+ 	int len = 0;
+ 
++#if defined(__linux__)
++	/*
++	 * Leaf: no JVM, no game. When the JVM fails to start or exits before its
++	 * handshake, retro_init() only shows a message, and upstream then loads
++	 * the game anyway: the frontend runs on with a black screen and nothing
++	 * to say why. Failing the load lets the frontend report it and return.
++	 */
++	if (!booted || !isRunning())
++	{
++		log_fn(RETRO_LOG_ERROR, "The Java app is not running, so the game was not loaded.\n");
++		return false;
++	}
++#endif
++
+ 	/* Game info is passed to a global variable to enable restarts */
+ 	gameinfo = *info;
+ 	/* Send savepath to java */
+@@ -1017,12 +1171,13 @@ void retro_run(void)
+ 		joypad[3] = InputState(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_RIGHT);
+ 
+ 		joypad[6] = InputState(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_X);
+-		joypad[7] = InputState(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_Y);
++		/* Leaf: Fire on A, the confirm button of a Nintendo-style handheld; 9 moves to Y. */
++		joypad[7] = InputState(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_A);
+ 
+ 		joypad[8] = InputState(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_START);
+ 		joypad[9] = InputState(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_SELECT);
+ 
+-		if(useAnalogAsEntireKeypad)
++		if(useAnalogAsEntireKeypad && !leafPointerOnLeftStick)
+ 		{
+ 			// These are more sensitive (lower threshold) in order to minimize cases where the 2,4,6,8 inputs are registered before these.
+ 			// Num 8 & Num 6
+@@ -1045,7 +1200,7 @@ void retro_run(void)
+ 		}
+ 		else
+ 		{
+-			joypad[4] = InputState(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_A);  // num 9
++			joypad[4] = InputState(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_Y);  // num 9 (Leaf: Y)
+ 			joypad[5] = InputState(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_B);  // num 7
+ 			joypad[10] = InputState(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_L); // num 1
+ 			joypad[11] = InputState(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_R); // num 3
+@@ -1055,7 +1210,12 @@ void retro_run(void)
+ 		joypad[12] = InputState(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_L2);
+ 		joypad[13] = InputState(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_R2);
+ 
+-		if(useAnalogAsEntireKeypad)
++		if(leafPointerOnLeftStick)
++		{
++			/* Leaf: the left stick is the pointer now, not 2, 4, 6 and 8. */
++			joypad[14] = joypad[15] = joypad[16] = joypad[17] = 0;
++		}
++		else if(useAnalogAsEntireKeypad)
+ 		{
+ 			joypad[14] = (int) ((InputState(0, RETRO_DEVICE_ANALOG, RETRO_DEVICE_INDEX_ANALOG_LEFT, RETRO_DEVICE_ID_ANALOG_Y ) / 32767.0f) < -analogDeadzone) && !num1pressed && !num3pressed; // Num 2
+ 			joypad[15] = (int) ((InputState(0, RETRO_DEVICE_ANALOG, RETRO_DEVICE_INDEX_ANALOG_LEFT, RETRO_DEVICE_ID_ANALOG_X ) / 32767.0f) < -analogDeadzone) && !num1pressed && !num7pressed;  // Num 4
+@@ -1074,8 +1234,10 @@ void retro_run(void)
+ 		joypad[19] = InputState(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_R3); // CLR
+ 
+ 		/* Right analog will control the pointer, freeing the left analog to mirror the D-Pad if needed. */
+-		int joyRx = InputState(0, RETRO_DEVICE_ANALOG, RETRO_DEVICE_INDEX_ANALOG_RIGHT, RETRO_DEVICE_ID_ANALOG_X);
+-		int joyRy = InputState(0, RETRO_DEVICE_ANALOG, RETRO_DEVICE_INDEX_ANALOG_RIGHT, RETRO_DEVICE_ID_ANALOG_Y);
++		/* Leaf: or the left analog, when freej2me_pointerstick says so. */
++		unsigned pointerStick = leafPointerOnLeftStick ? RETRO_DEVICE_INDEX_ANALOG_LEFT : RETRO_DEVICE_INDEX_ANALOG_RIGHT;
++		int joyRx = InputState(0, RETRO_DEVICE_ANALOG, pointerStick, RETRO_DEVICE_ID_ANALOG_X);
++		int joyRy = InputState(0, RETRO_DEVICE_ANALOG, pointerStick, RETRO_DEVICE_ID_ANALOG_Y);
+ 
+ 		int mouseX = InputState(0, RETRO_DEVICE_MOUSE, 0, RETRO_DEVICE_ID_MOUSE_X);
+ 		int mouseY = InputState(0, RETRO_DEVICE_MOUSE, 0, RETRO_DEVICE_ID_MOUSE_Y);
+@@ -1115,7 +1277,8 @@ void retro_run(void)
+ 		if(joymouseX<0) { joymouseX=0; }
+ 		if(joymouseY<0) { joymouseY=0; }
+ 		if(joymouseX>frameWidth-17) { joymouseX=frameWidth-17; }
+-		if(joymouseY>frameHeight)   { joymouseY=frameHeight; }
++		/* Leaf: the tip is the click position, so keep it on the last row, not one below it. */
++		if(joymouseY>frameHeight-1) { joymouseY=frameHeight-1; }
+ 
+ 		if(uses_mouse)
+ 		{
+@@ -1566,10 +1729,28 @@ bool javaOpen(char *cmd, char **params)
  	pipe(pRead); /* 0: pRead, 1: pWrite */
  	pipe(pWrite);
  
@@ -204,7 +310,7 @@ index d151750c..0955fbec 100755
  
  		dup2(pWrite[0], fd_stdin);  /* read from parent pWrite */
  		dup2(pRead[1], fd_stdout);  /* write to parent pRead */
-@@ -1579,10 +1728,22 @@ bool javaOpen(char *cmd, char **params)
+@@ -1579,10 +1760,22 @@ bool javaOpen(char *cmd, char **params)
  
  		chdir(systemPath);
  
@@ -227,7 +333,7 @@ index d151750c..0955fbec 100755
  	}
  
  	if(pid>0) /* parent */
-@@ -1591,6 +1752,10 @@ bool javaOpen(char *cmd, char **params)
+@@ -1591,6 +1784,10 @@ bool javaOpen(char *cmd, char **params)
  		close(pWrite[0]);
  	}
  
@@ -238,8 +344,148 @@ index d151750c..0955fbec 100755
  	if(pid<0) /* error */
  	{
  		Environ(RETRO_ENVIRONMENT_SET_MESSAGE_EXT, (void*)&messages[IMPROPER_CHILDPROC_MSG]);
+diff --git a/src/libretro/freej2me_libretro.h b/src/libretro/freej2me_libretro.h
+index 327207a..02f8f5e 100644
+--- a/src/libretro/freej2me_libretro.h
++++ b/src/libretro/freej2me_libretro.h
+@@ -98,9 +98,9 @@ static const struct retro_input_descriptor desc[] =
+ 	{ 0, RETRO_DEVICE_ANALOG, RETRO_DEVICE_INDEX_ANALOG_RIGHT, RETRO_DEVICE_ID_ANALOG_X,          "Pointer Horizontal Move"},
+ 	{ 0, RETRO_DEVICE_ANALOG, RETRO_DEVICE_INDEX_ANALOG_RIGHT, RETRO_DEVICE_ID_ANALOG_Y,          "Pointer Vertical Move"},
+ 	{ 0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_B,                                        "Num 7" },
+-	{ 0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_A,                                        "Num 9" },
++	{ 0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_A,                                        "OK/Fire" },
+ 	{ 0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_X,                                        "Num 0" },
+-	{ 0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_Y,                                        "OK/Fire" },
++	{ 0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_Y,                                        "Num 9" },
+ 	{ 0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_L,                                        "Num 1" },
+ 	{ 0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_R,                                        "Num 3" },
+ 	{ 0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_R2,                                       "Num #" },
+@@ -294,7 +294,7 @@ struct retro_core_option_v2_definition core_options[] =
+ 			{ "Red",      NULL },
+ 			{ NULL, NULL },
+ 		},
+-		"Green"
++		"Disabled"
+ 	},
+ 	{
+ 		"freej2me_fps",
+@@ -352,8 +352,8 @@ struct retro_core_option_v2_definition core_options[] =
+ 		"freej2me_numsynths",
+ 		"System > Number of MIDI Synthesizers",
+ 		"Number of MIDI Synthesizers",
+-		"FreeJ2ME-Plus pre-allocates a set amount of MIDI synthesizers for smoother MIDI/SMAF/MLD playback. The default of 4 is used for maximum compatibility as no vendor spec so far states that more than 4 sequences can play at the same time, but most times 1 or 2 are enough (MIDP mostly uses 1). You can decrease the pre-allocated amount to reduce memory usage and improve performance a bit. Note that DoJa, KDDI, SoftBank, and some others may need more than 2 to work properly.",
+-		"FreeJ2ME-Plus pre-allocates a set amount of MIDI synthesizers for smoother MIDI/SMAF/MLD playback. The default of 4 is used for maximum compatibility as no vendor spec so far states that more than 4 sequences can play at the same time, but most times 1 or 2 are enough (MIDP mostly uses 1). You can decrease the pre-allocated amount to reduce memory usage and improve performance a bit. Note that DoJa, KDDI, SoftBank, and some others may need more than 2 to work properly.",
++		"FreeJ2ME-Plus pre-allocates a set amount of MIDI synthesizers for smoother MIDI/SMAF/MLD playback. This build defaults to 2: most times 1 or 2 are enough (MIDP mostly uses 1), and each one costs startup time and memory. No vendor spec so far states that more than 4 sequences can play at the same time. You can decrease the pre-allocated amount to reduce memory usage and improve performance a bit. Note that DoJa, KDDI, SoftBank, and some others may need more than 2 to work properly.",
++		"FreeJ2ME-Plus pre-allocates a set amount of MIDI synthesizers for smoother MIDI/SMAF/MLD playback. This build defaults to 2: most times 1 or 2 are enough (MIDP mostly uses 1), and each one costs startup time and memory. No vendor spec so far states that more than 4 sequences can play at the same time. You can decrease the pre-allocated amount to reduce memory usage and improve performance a bit. Note that DoJa, KDDI, SoftBank, and some others may need more than 2 to work properly.",
+ 		"system_settings",
+ 		{
+ 			{ "4",   "4 Synthesizers"   },
+@@ -362,7 +362,7 @@ struct retro_core_option_v2_definition core_options[] =
+ 			{ "1",   "1 Synthesizer"    },
+ 			{ NULL, NULL },
+ 		},
+-		"4"
++		"2"
+ 	},
+ 	{
+ 		"freej2me_textfont",
+@@ -607,6 +607,20 @@ struct retro_core_option_v2_definition core_options[] =
+ 		},
+ 		"Mouse"
+ 	},
++	{ /* Leaf: one-stick devices */
++		"freej2me_pointerstick",
++		"Advanced Settings > Pointer Stick",
++		"Pointer Stick",
++		"Which analog stick moves the on-screen pointer. On a device with a single stick, choose Left Stick for games that need taps: the left stick then moves the pointer instead of pressing 2, 4, 6 and 8, and L3 taps while the pointer is showing.",
++		"Which analog stick moves the on-screen pointer. On a device with a single stick, choose Left Stick for games that need taps: the left stick then moves the pointer instead of pressing 2, 4, 6 and 8, and L3 taps while the pointer is showing.",
++		"advanced_settings",
++		{
++			{ "right", "Right Stick" },
++			{ "left",  "Left Stick"  },
++			{ NULL, NULL },
++		},
++		"right"
++	},
+ 	{
+ 		"freej2me_pointerxspeed",
+ 		"Advanced Settings > Pointer X Speed",
+@@ -1075,7 +1089,7 @@ struct retro_core_option_definition core_options_v1 [] =
+ 			{ "Red",      NULL },
+ 			{ NULL, NULL },
+ 		},
+-		"Green"
++		"Disabled"
+ 	},
+ 	{
+ 		"freej2me_fps",
+@@ -1123,7 +1137,7 @@ struct retro_core_option_definition core_options_v1 [] =
+ 	{
+ 		"freej2me_numsynths",
+ 		"Number of MIDI Synthesizers",
+-		"FreeJ2ME-Plus pre-allocates a set amount of MIDI synthesizers for smoother MIDI/SMAF/MLD playback. The default of 4 is used for maximum compatibility as no vendor spec so far states that more than 4 sequences can play at the same time, but most times 1 or 2 are enough (MIDP mostly uses 1). You can decrease the pre-allocated amount to reduce memory usage and improve performance a bit. Note that DoJa, KDDI, SoftBank, and some others may need more than 2 to work properly.",
++		"FreeJ2ME-Plus pre-allocates a set amount of MIDI synthesizers for smoother MIDI/SMAF/MLD playback. This build defaults to 2: most times 1 or 2 are enough (MIDP mostly uses 1), and each one costs startup time and memory. No vendor spec so far states that more than 4 sequences can play at the same time. You can decrease the pre-allocated amount to reduce memory usage and improve performance a bit. Note that DoJa, KDDI, SoftBank, and some others may need more than 2 to work properly.",
+ 		{
+ 			{ "4",   "4 Synthesizers"   },
+ 			{ "3",   "3 Synthesizers"   },
+@@ -1131,7 +1145,7 @@ struct retro_core_option_definition core_options_v1 [] =
+ 			{ "1",   "1 Synthesizer"    },
+ 			{ NULL, NULL },
+ 		},
+-		"4"
++		"2"
+ 	},
+ 	{
+ 		"freej2me_textfont",
+@@ -1328,6 +1342,17 @@ struct retro_core_option_definition core_options_v1 [] =
+ 		},
+ 		"Mouse"
+ 	},
++	{ /* Leaf: one-stick devices */
++		"freej2me_pointerstick",
++		"Pointer Stick",
++		"Which analog stick moves the on-screen pointer. On a device with a single stick, choose Left Stick for games that need taps: the left stick then moves the pointer instead of pressing 2, 4, 6 and 8, and L3 taps while the pointer is showing.",
++		{
++			{ "right", "Right Stick" },
++			{ "left",  "Left Stick"  },
++			{ NULL, NULL },
++		},
++		"right"
++	},
+ 	{
+ 		"freej2me_pointerxspeed",
+ 		"Pointer X Speed",
+@@ -1621,7 +1646,7 @@ static const struct retro_variable vars[] =
+ 	},
+ 	{ /* LCD Backlight Color */
+ 		"freej2me_backlightcolor",
+-		"LCD Backlight Color; Green|Disabled|Cyan|Orange|Violet|Red"
++		"LCD Backlight Color; Disabled|Green|Cyan|Orange|Violet|Red"
+ 	},
+ 	{ /* Game FPS limit */
+ 		"freej2me_fps",
+@@ -1637,7 +1662,7 @@ static const struct retro_variable vars[] =
+ 	},
+ 	{ /* Number of MIDI Synthesizers */
+ 		"freej2me_numsynths",
+-		"Number of MIDI Synthesizers; 4|3|2|1",
++		"Number of MIDI Synthesizers; 2|1|3|4",
+ 	},
+ 	{ /* Custom Text Font */
+ 		"freej2me_textfont",
+@@ -1703,6 +1728,10 @@ static const struct retro_variable vars[] =
+ 		"freej2me_pointertype",
+ 		"Pointer Type; Mouse|Touch|None"
+ 	},
++	{ /* Leaf: Pointer Stick */
++		"freej2me_pointerstick",
++		"Pointer Stick; right|left"
++	},
+ 	{ /* Screen Pointer X Speed */
+ 		"freej2me_pointerxspeed",
+ 		"Pointer X Speed; 4|1|2|8|16"
 diff --git a/src/libretro/freej2me_plus_libretro.info b/src/libretro/freej2me_plus_libretro.info
-index 9bbcfc95..e925f515 100644
+index 9bbcfc9..e925f51 100644
 --- a/src/libretro/freej2me_plus_libretro.info
 +++ b/src/libretro/freej2me_plus_libretro.info
 @@ -26,9 +26,8 @@ hw_render = "false"

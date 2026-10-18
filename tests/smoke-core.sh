@@ -12,7 +12,7 @@
 #   2. retro_deinit() stops it;
 #   3. SIGKILL of the frontend takes the JVM with it (PR_SET_PDEATHSIG);
 #   4. a core with nothing beside it and no java on PATH fails cleanly, with no
-#      second copy of the frontend returning from fork();
+#      second copy of the frontend returning from fork(), and refuses the game;
 #   5. a core with no jar anywhere reports it and starts nothing.
 #
 # The image gets fontconfig and DejaVu from the distribution for this test
@@ -112,7 +112,12 @@ docker run --rm --init --platform linux/arm64 \
     # its output on the pipe passes for a started JVM.
     expect /tmp/3.out "java_pid=0" "no child left after a failed exec"
     grep -q "using the system directory and PATH" /tmp/3.err || fail "no fallback log line"
-    ok "no bundle, no java: fails once, no second frontend"
+    /tmp/harness /tmp/lonely/freej2me_plus_libretro.so /tmp/bios-with-jar load >/tmp/3b.out 2>/tmp/3b.err \
+      || { cat /tmp/3b.err; fail "fallback harness (load) exited non-zero"; }
+    # Unpatched, retro_load_game() succeeds with no JVM and the frontend runs
+    # on with a black screen.
+    expect /tmp/3b.out "load_game=0" "game refused without a running JVM"
+    ok "no bundle, no java: fails once, no second frontend, game refused"
 
     mkdir -p /tmp/empty-bios
     /tmp/harness /tmp/lonely/freej2me_plus_libretro.so /tmp/empty-bios init >/tmp/4.out 2>/tmp/4.err \

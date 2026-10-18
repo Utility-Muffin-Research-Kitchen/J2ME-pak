@@ -7,6 +7,7 @@
  *
  *   core-harness <core.so> <system_dir> init   start, describe the JVM, deinit
  *   core-harness <core.so> <system_dir> hold   start, describe, then wait to be killed
+ *   core-harness <core.so> <system_dir> load   start, describe, then try retro_load_game()
  *
  * Output lines are "key=value". Nothing here is shipped.
  */
@@ -132,12 +133,13 @@ int main(int argc, char **argv)
 	void (*set_environment)(retro_environment_t);
 	void (*init)(void);
 	void (*deinit)(void);
+	bool (*load_game)(const struct retro_game_info *);
 	pid_t java;
 	char cwd[4096];
 	char link[64];
 	ssize_t n;
 
-	if (argc != 4) { fprintf(stderr, "usage: %s <core.so> <system_dir> init|hold\n", argv[0]); return 2; }
+	if (argc != 4) { fprintf(stderr, "usage: %s <core.so> <system_dir> init|hold|load\n", argv[0]); return 2; }
 	system_dir = argv[2];
 	snprintf(save_dir, sizeof(save_dir), "%s/saves", system_dir);
 
@@ -145,7 +147,8 @@ int main(int argc, char **argv)
 	set_environment = (void (*)(retro_environment_t))dlsym(core, "retro_set_environment");
 	init = (void (*)(void))dlsym(core, "retro_init");
 	deinit = (void (*)(void))dlsym(core, "retro_deinit");
-	if (!set_environment || !init || !deinit) { fprintf(stderr, "missing libretro symbols\n"); return 2; }
+	load_game = (bool (*)(const struct retro_game_info *))dlsym(core, "retro_load_game");
+	if (!set_environment || !init || !deinit || !load_game) { fprintf(stderr, "missing libretro symbols\n"); return 2; }
 
 	set_environment(environment);
 	init();
@@ -173,6 +176,15 @@ int main(int argc, char **argv)
 		printf("holding=1\n");
 		fflush(stdout);
 		for (;;) { pause(); }
+	}
+
+	if (strcmp(argv[3], "load") == 0)
+	{
+		/* Only the failure path is meaningful here: with no JVM running the
+		   core must refuse the game instead of running on without one. */
+		struct retro_game_info info = { "/tmp/harness-game.jar", NULL, 0, NULL };
+		printf("load_game=%d\n", load_game(&info) ? 1 : 0);
+		fflush(stdout);
 	}
 
 	deinit();

@@ -24,7 +24,7 @@ if the locks disagree.
 `java -jar freej2me_plus-lr.jar` through `PATH` after `chdir()` into
 RetroArch's system directory. Leaf points that directory at the shared
 `BIOS/` folder, and the MLP1 has no Java, so unpatched the core cannot start
-on this device at all. The patch changes four things, all Linux-only:
+on this device at all. The patch changes five things, all Linux-only:
 
 1. **Find the bundle beside the core.** `dladdr()` on a function inside the
    core gives the `.so`'s own path. If `freej2me_plus-lr.jar` and an
@@ -57,13 +57,48 @@ on this device at all. The patch changes four things, all Linux-only:
    with its stdout on the frame pipe: the parent reads that output as the
    JVM's handshake and treats it as a running app. The patched child calls
    `_exit(127)`.
+5. **No JVM, no game.** When the JVM fails to start or exits before its
+   handshake, upstream's `retro_init()` shows a message and `retro_load_game()`
+   then returns true anyway, so the frontend runs a core with nothing behind
+   it and shows a black screen for good. The patched `retro_load_game()`
+   returns false when the JVM is not running, and the frontend ends the
+   session.
 
 It also sets `firmware_count = 0` in `freej2me_plus_libretro.info`, because the
 jar is no longer something you place in the system directory.
 
-`tests/smoke-core.sh` checks each of these against the packaged core in an
-arm64 container, and fails against the unpatched upstream core on the SIGKILL
-and failed-exec cases.
+### Defaults for a one-stick handheld
+
+These come from playing a dozen real games on the MLP1 and apply on every
+platform this patch is built for:
+
+- **Fire on A.** Upstream puts OK/Fire on the RetroPad's Y (west) and 9 on A.
+  On a Nintendo-style handheld A is the confirm button, and Fire is the key
+  nearly every game wants for menus, "press any key" and shooting, so the two
+  swap. The input descriptors follow.
+- **LCD backlight off.** Upstream defaults `freej2me_backlightcolor` to Green,
+  and at this commit `PlatformGraphics.flushGraphics()` masks every pixel with
+  the backlight colour whenever one is set (the `renderLCDMask` check is
+  commented out), so every colour game came out green. The Java side's own
+  default is Disabled; the core now agrees.
+- **Two MIDI synthesizers.** `freej2me_numsynths` defaults to 2 instead of 4.
+  Each synthesizer opens its own audio line at startup; on the MLP1 the extra
+  two cost about half a second of every launch, around 10 MB of java memory,
+  and about a fifth of a core in PulseAudio for as long as the game runs.
+  Music in Doom II RPG, Final Fantasy and Galaxy on Fire 2 plays with 2.
+- **Pointer Stick.** A new option, `freej2me_pointerstick` (Right Stick by
+  default, as upstream), lets the left stick move the pointer, which is how a
+  one-stick device reaches games built for touchscreens. While it is set the
+  left stick sends no 2, 4, 6 or 8; **L3** still taps while the pointer shows.
+- **Pointer on the canvas.** Upstream lets the pointer's tip, which is the tap
+  position, go one row below the last; a tap there misses the canvas. The
+  patch stops it on the last row.
+
+`tests/smoke-core.sh` checks the five numbered changes against the packaged
+core in an arm64 container, and fails against the unpatched upstream core on
+the SIGKILL, failed-exec and refused-game cases. The defaults were checked on
+an MLP1: key codes logged by a test MIDlet, colours read off the screen,
+music in three MIDI games, and the left-stick pointer tapping a touch build.
 
 ## Toolchain
 
