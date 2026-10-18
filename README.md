@@ -98,6 +98,8 @@ to tap while the pointer is showing. The MLP1 has one stick, so for these
 games set **Core Options > Advanced Settings > Pointer Stick** to **Left
 Stick** and save it as a game option, the same way as the resolution. While it
 is set, the left stick moves the pointer and no longer presses 2, 4, 6 and 8.
+Aim, let go of the stick and press **L3** within 3 seconds to tap. Press any
+other button and the pointer hides, and **L3** is 5 again.
 
 ## What a content pak is
 

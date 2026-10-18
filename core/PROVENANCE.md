@@ -90,6 +90,13 @@ platform this patch is built for:
   default, as upstream), lets the left stick move the pointer, which is how a
   one-stick device reaches games built for touchscreens. While it is set the
   left stick sends no 2, 4, 6 or 8; **L3** still taps while the pointer shows.
+  With the left stick the pointer stays up, and **L3** taps, for 3 s (180
+  frames) after the stick stops, against upstream's half second: the thumb has
+  to leave the stick to reach L3, and on the MLP1 that pause usually ran past
+  0.5 s, which turned every tap into a 5. Any other button hides the pointer at
+  once, so L3 is the 5 key again straight away. An L3 release always follows
+  its press, so a tap still ends as a tap if the pointer hid while L3 was held.
+  The right stick keeps upstream's half second.
 - **Pointer on the canvas.** Upstream lets the pointer's tip, which is the tap
   position, go one row below the last; a tap there misses the canvas. The
   patch stops it on the last row.

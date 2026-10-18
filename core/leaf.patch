@@ -1,5 +1,5 @@
 diff --git a/src/libretro/freej2me_libretro.c b/src/libretro/freej2me_libretro.c
-index d151750..db03cc9 100755
+index d151750..5a54c1f 100755
 --- a/src/libretro/freej2me_libretro.c
 +++ b/src/libretro/freej2me_libretro.c
 @@ -14,6 +14,9 @@
@@ -49,15 +49,25 @@ index d151750..db03cc9 100755
  retro_environment_t Environ;
  retro_video_refresh_t Video;
  retro_audio_sample_t Audio;
-@@ -133,6 +159,7 @@ bool uses_mouse = true;
+@@ -133,6 +159,17 @@ bool uses_mouse = true;
  bool uses_pointer = false;
  bool booted = false;
  bool restarting = false;
 +bool leafPointerOnLeftStick = false; /* Leaf: freej2me_pointerstick */
++/*
++ * Leaf: how long the pointer stays up, and L3 taps, after the last stick
++ * movement. Upstream's half second suits a right stick under the thumb; with
++ * the left stick the thumb has to leave it to reach L3, and that pause is
++ * usually longer, which turned taps into presses of 5. Counted in frames like
++ * upstream's: 3 s at 60 fps.
++ */
++#define LEAF_STICK_POINTER_FRAMES (DEFAULT_FPS * 3)
++#define LEAF_POINTER_FRAMES (leafPointerOnLeftStick ? LEAF_STICK_POINTER_FRAMES : DEFAULT_FPS / 2)
++bool leafL3Tapping = false; /* Leaf: L3 went down as a tap, so its release is one too */
  bool useAnalogAsEntireKeypad = false; // Enhancement for games like Time Crisis Elite which use the keypad's diagonals exclusively, and not 2+4, 6+8, etc.
  float analogDeadzone = 0.10f; // Additional Deadzone over libretro for input reads
  
-@@ -345,6 +372,83 @@ int freej2me_present(const char *path)
+@@ -345,6 +382,83 @@ int freej2me_present(const char *path)
  #endif
  }
  
@@ -141,7 +151,7 @@ index d151750..db03cc9 100755
  // Fast-forward state tracker
  void check_fast_forwarding(void)
  {
-@@ -623,6 +727,14 @@ static void check_variables()
+@@ -623,6 +737,14 @@ static void check_variables()
  	}
  
  
@@ -156,7 +166,7 @@ index d151750..db03cc9 100755
  	var.key = "freej2me_pointerxspeed";
  	if (Environ(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
  	{
-@@ -859,6 +971,33 @@ void retro_init(void)
+@@ -859,6 +981,33 @@ void retro_init(void)
  		Environ(RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY, &systemPath);
  	}
  
@@ -190,7 +200,7 @@ index d151750..db03cc9 100755
  	/* Check if freej2me's app actually exists and notify the user if it doesn't */
  	char *freej2mePath = malloc(sizeof(char) * PIPE_MAX_LEN);
  	snprintf(freej2mePath, sizeof(char) * PIPE_MAX_LEN, "%s/%s", systemPath, freej2meapp);
-@@ -886,6 +1025,7 @@ void retro_init(void)
+@@ -886,6 +1035,7 @@ void retro_init(void)
  	params[4] = strdup(resArg[0]);
  	params[5] = strdup(resArg[1]);
  	params[6] = NULL; // Null-terminate the array
@@ -198,7 +208,7 @@ index d151750..db03cc9 100755
  
  	log_fn(RETRO_LOG_INFO, "Preparing to open FreeJ2ME-Plus' Java app.\n");
  
-@@ -920,6 +1060,20 @@ bool retro_load_game(const struct retro_game_info *info)
+@@ -920,6 +1070,20 @@ bool retro_load_game(const struct retro_game_info *info)
  {
  	int len = 0;
  
@@ -219,7 +229,7 @@ index d151750..db03cc9 100755
  	/* Game info is passed to a global variable to enable restarts */
  	gameinfo = *info;
  	/* Send savepath to java */
-@@ -1017,12 +1171,13 @@ void retro_run(void)
+@@ -1017,12 +1181,13 @@ void retro_run(void)
  		joypad[3] = InputState(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_RIGHT);
  
  		joypad[6] = InputState(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_X);
@@ -235,7 +245,7 @@ index d151750..db03cc9 100755
  		{
  			// These are more sensitive (lower threshold) in order to minimize cases where the 2,4,6,8 inputs are registered before these.
  			// Num 8 & Num 6
-@@ -1045,7 +1200,7 @@ void retro_run(void)
+@@ -1045,7 +1210,7 @@ void retro_run(void)
  		}
  		else
  		{
@@ -244,7 +254,7 @@ index d151750..db03cc9 100755
  			joypad[5] = InputState(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_B);  // num 7
  			joypad[10] = InputState(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_L); // num 1
  			joypad[11] = InputState(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_R); // num 3
-@@ -1055,7 +1210,12 @@ void retro_run(void)
+@@ -1055,7 +1220,12 @@ void retro_run(void)
  		joypad[12] = InputState(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_L2);
  		joypad[13] = InputState(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_R2);
  
@@ -258,7 +268,7 @@ index d151750..db03cc9 100755
  		{
  			joypad[14] = (int) ((InputState(0, RETRO_DEVICE_ANALOG, RETRO_DEVICE_INDEX_ANALOG_LEFT, RETRO_DEVICE_ID_ANALOG_Y ) / 32767.0f) < -analogDeadzone) && !num1pressed && !num3pressed; // Num 2
  			joypad[15] = (int) ((InputState(0, RETRO_DEVICE_ANALOG, RETRO_DEVICE_INDEX_ANALOG_LEFT, RETRO_DEVICE_ID_ANALOG_X ) / 32767.0f) < -analogDeadzone) && !num1pressed && !num7pressed;  // Num 4
-@@ -1074,8 +1234,10 @@ void retro_run(void)
+@@ -1074,8 +1244,10 @@ void retro_run(void)
  		joypad[19] = InputState(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_R3); // CLR
  
  		/* Right analog will control the pointer, freeing the left analog to mirror the D-Pad if needed. */
@@ -271,7 +281,17 @@ index d151750..db03cc9 100755
  
  		int mouseX = InputState(0, RETRO_DEVICE_MOUSE, 0, RETRO_DEVICE_ID_MOUSE_X);
  		int mouseY = InputState(0, RETRO_DEVICE_MOUSE, 0, RETRO_DEVICE_ID_MOUSE_Y);
-@@ -1115,7 +1277,8 @@ void retro_run(void)
+@@ -1105,7 +1277,8 @@ void retro_run(void)
+ 		{
+ 			joymouseAnalog = true;
+ 			/* This means that the mouse pointer will be visible for 30 frames (half a second, since 60fps is a second) */
+-			joymouseTime = DEFAULT_FPS / 2;
++			/* Leaf: 3 s when the left stick drives it. */
++			joymouseTime = LEAF_POINTER_FRAMES;
+ 			joymouseX += joyRx<<1;
+ 			joymouseY += joyRy<<1;
+ 
+@@ -1115,7 +1288,8 @@ void retro_run(void)
  		if(joymouseX<0) { joymouseX=0; }
  		if(joymouseY<0) { joymouseY=0; }
  		if(joymouseX>frameWidth-17) { joymouseX=frameWidth-17; }
@@ -281,7 +301,32 @@ index d151750..db03cc9 100755
  
  		if(uses_mouse)
  		{
-@@ -1566,10 +1729,28 @@ bool javaOpen(char *cmd, char **params)
+@@ -1181,11 +1355,13 @@ void retro_run(void)
+ 			/* joypad - spot the difference, send corresponding keyup/keydown events */
+ 			if(joypad[i]!=joypre[i])
+ 			{
+-				if(i==18 && joymouseTime>0 && joymouseAnalog)
++				/* Leaf: a release follows its press, so a tap still ends as a tap if the pointer hid in between. */
++				if(i==18 && ((joymouseTime>0 && joymouseAnalog) || leafL3Tapping))
+ 				{
+ 					/* when mouse is visible, and using analog stick for mouse, L3 / [num 5] clicks */
+ 					if(joypad[i] == 1) { joymouseClickedTime = DEFAULT_FPS * 0.1; }
+-					joymouseTime = DEFAULT_FPS / 2;
++					joymouseTime = LEAF_POINTER_FRAMES;
++					leafL3Tapping = joypad[i] == 1;
+ 					joyevent[0] = 4+joypad[18];
+ 					joyevent[1] = (joymouseX >> 8) & 0xFF;
+ 					joyevent[2] = (joymouseX) & 0xFF;
+@@ -1195,6 +1371,8 @@ void retro_run(void)
+ 				}
+ 				else
+ 				{
++					/* Leaf: any other key hides the left-stick pointer, so L3 is 5 again at once. */
++					if(leafPointerOnLeftStick && joypad[i] == 1) { joymouseTime = 0; joymouseClickedTime = 0; }
+ 					joyevent[0] = 2+joypad[i];
+ 					joyevent[1] = 0;
+ 					joyevent[2] = 0;
+@@ -1566,10 +1744,28 @@ bool javaOpen(char *cmd, char **params)
  	pipe(pRead); /* 0: pRead, 1: pWrite */
  	pipe(pWrite);
  
@@ -310,7 +355,7 @@ index d151750..db03cc9 100755
  
  		dup2(pWrite[0], fd_stdin);  /* read from parent pWrite */
  		dup2(pRead[1], fd_stdout);  /* write to parent pRead */
-@@ -1579,10 +1760,22 @@ bool javaOpen(char *cmd, char **params)
+@@ -1579,10 +1775,22 @@ bool javaOpen(char *cmd, char **params)
  
  		chdir(systemPath);
  
@@ -333,7 +378,7 @@ index d151750..db03cc9 100755
  	}
  
  	if(pid>0) /* parent */
-@@ -1591,6 +1784,10 @@ bool javaOpen(char *cmd, char **params)
+@@ -1591,6 +1799,10 @@ bool javaOpen(char *cmd, char **params)
  		close(pWrite[0]);
  	}
  
@@ -345,7 +390,7 @@ index d151750..db03cc9 100755
  	{
  		Environ(RETRO_ENVIRONMENT_SET_MESSAGE_EXT, (void*)&messages[IMPROPER_CHILDPROC_MSG]);
 diff --git a/src/libretro/freej2me_libretro.h b/src/libretro/freej2me_libretro.h
-index 327207a..02f8f5e 100644
+index 327207a..8f09a97 100644
 --- a/src/libretro/freej2me_libretro.h
 +++ b/src/libretro/freej2me_libretro.h
 @@ -98,9 +98,9 @@ static const struct retro_input_descriptor desc[] =
@@ -397,8 +442,8 @@ index 327207a..02f8f5e 100644
 +		"freej2me_pointerstick",
 +		"Advanced Settings > Pointer Stick",
 +		"Pointer Stick",
-+		"Which analog stick moves the on-screen pointer. On a device with a single stick, choose Left Stick for games that need taps: the left stick then moves the pointer instead of pressing 2, 4, 6 and 8, and L3 taps while the pointer is showing.",
-+		"Which analog stick moves the on-screen pointer. On a device with a single stick, choose Left Stick for games that need taps: the left stick then moves the pointer instead of pressing 2, 4, 6 and 8, and L3 taps while the pointer is showing.",
++		"Which analog stick moves the on-screen pointer. On a device with a single stick, choose Left Stick for games that need taps: the left stick then moves the pointer instead of pressing 2, 4, 6 and 8, and L3 taps while the pointer is showing. The pointer stays up for 3 seconds after the stick stops, or until you press another button.",
++		"Which analog stick moves the on-screen pointer. On a device with a single stick, choose Left Stick for games that need taps: the left stick then moves the pointer instead of pressing 2, 4, 6 and 8, and L3 taps while the pointer is showing. The pointer stays up for 3 seconds after the stick stops, or until you press another button.",
 +		"advanced_settings",
 +		{
 +			{ "right", "Right Stick" },
@@ -444,7 +489,7 @@ index 327207a..02f8f5e 100644
 +	{ /* Leaf: one-stick devices */
 +		"freej2me_pointerstick",
 +		"Pointer Stick",
-+		"Which analog stick moves the on-screen pointer. On a device with a single stick, choose Left Stick for games that need taps: the left stick then moves the pointer instead of pressing 2, 4, 6 and 8, and L3 taps while the pointer is showing.",
++		"Which analog stick moves the on-screen pointer. On a device with a single stick, choose Left Stick for games that need taps: the left stick then moves the pointer instead of pressing 2, 4, 6 and 8, and L3 taps while the pointer is showing. The pointer stays up for 3 seconds after the stick stops, or until you press another button.",
 +		{
 +			{ "right", "Right Stick" },
 +			{ "left",  "Left Stick"  },

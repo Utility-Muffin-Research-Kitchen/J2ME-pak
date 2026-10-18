@@ -14,8 +14,8 @@
   },
   "patch": {
     "file": "core/leaf.patch",
-    "sha256": "f2caaf9a45418c62a9d36cd8b04dab0ce3dbfa21831d1d85241ce8f2519d1a4b",
-    "note": "Runs the jar and Java runtime bundled beside the core by absolute path, ties the JVM's life to the frontend with PR_SET_PDEATHSIG, exits the forked child when exec fails, fails retro_load_game() when the JVM is not running, and drops the system-directory firmware entry from the .info file. It also sets this build's defaults for a one-stick Nintendo-style handheld: Fire on A (9 on Y), LCD backlight off, 2 MIDI synthesizers, a Pointer Stick option that lets the left stick move the pointer, and a pointer tip that stays on the canvas."
+    "sha256": "d5566a086b1cf8c81c0c6c6f661ad537bb4230df2cf9276b1ad720e9c0297a2a",
+    "note": "Runs the jar and Java runtime bundled beside the core by absolute path, ties the JVM's life to the frontend with PR_SET_PDEATHSIG, exits the forked child when exec fails, fails retro_load_game() when the JVM is not running, and drops the system-directory firmware entry from the .info file. It also sets this build's defaults for a one-stick Nintendo-style handheld: Fire on A (9 on Y), LCD backlight off, 2 MIDI synthesizers, a Pointer Stick option that lets the left stick move the pointer and keeps it up, with L3 tapping, for 3 s after the stick stops or until another button is pressed, and a pointer tip that stays on the canvas."
   },
   "toolchain": {
     "image": "ghcr.io/utility-muffin-research-kitchen/mlp1-toolchain:latest",
@@ -27,9 +27,9 @@
   "artifact": {
     "file_name": "freej2me_plus_libretro.so",
     "info_file_name": "freej2me_plus_libretro.info",
-    "sha256": "51c333f9aae8e8adfe8c2167dda1af5ca4aae6647aa22c9eac95bb3a5a177e7b",
+    "sha256": "9b069be50d03e3151aff6d3a4293ce307767eaec023598b131f09b8c70ff9919",
     "info_sha256": "fd197809f83466bf649b7ad0016e9ebf6bce87c83297f244ff205463f936b680",
-    "size_bytes": 316944,
-    "note": "Recorded from clean builds in the digest-pinned image on 2026-10-18 (a FORCE=1 rebuild and a build from a fresh clone in a separate build directory agree). CI is the independent verifier; investigate any mismatch rather than overwriting these values."
+    "size_bytes": 321040,
+    "note": "Recorded from clean builds in the digest-pinned image on 2026-10-18 (two FORCE=1 rebuilds agree with the cached build). CI is the independent verifier; investigate any mismatch rather than overwriting these values."
   }
 }
