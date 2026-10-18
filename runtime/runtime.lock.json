@@ -4,9 +4,10 @@
   "source_commit": "baca76a4dda6f30abac67fb4a3db009eed05f91c",
   "container": {
     "image": "ghcr.io/utility-muffin-research-kitchen/mlp1-toolchain:latest",
-    "digest": "sha256:66aac16fb8b07e663c9b4d66970f272df195a6eba98dfad8286eabbaa617faf9",
+    "digest": "sha256:a1510a909283ed2c1ec4cd1845ed0b8ef7ca4731d6886a59c4781271f39515ea",
+    "index_digest": "sha256:66aac16fb8b07e663c9b4d66970f272df195a6eba98dfad8286eabbaa617faf9",
     "platform": "linux/arm64",
-    "note": "The same digest-pinned image as the core, run as linux/arm64 so the aarch64 JDKs can execute: jlink, and the CDS dump, which runs the target java binary. The image contributes only a glibc userland and Python for the jar normalizer; the Java toolchain comes from the archives below. On an x86_64 host this needs QEMU binfmt (docker/setup-qemu-action in CI)."
+    "note": "The same toolchain image as the core, run as linux/arm64 so the aarch64 JDKs can execute: jlink, and the CDS dump, which runs the target java binary. `digest` is the linux/arm64 manifest inside the multi-arch index the core pins (`index_digest`). Pinning the platform manifest, not the index, matters on Docker's classic image store, where pulling the index's arm64 variant after the core has pulled its amd64 variant fails with \"cannot overwrite digest\". The image contributes only a glibc userland and Python for the jar normalizer; the Java toolchain comes from the archives below. On an x86_64 host this needs QEMU binfmt (docker/setup-qemu-action in CI)."
   },
   "inputs": [
     {
