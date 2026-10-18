@@ -113,8 +113,12 @@ not an app.
 
 ```text
 J2ME.pak/
-  pak.json                         the provides block
+  pak.json                         the provides and content_art blocks
   art/J2ME.png                     flat system icon
+  art/J2ME-photo.png               photographic system icon
+  art/J2ME-wordmark.png            game-details wordmark, tinted to the theme
+  art/J2ME-grid.png                Grid layout tile
+  art/*.md                         where each image came from, and its license
   cores/freej2me_plus_libretro.so  the patched libretro core
   cores/freej2me_plus-lr.jar       FreeJ2ME-Plus itself
   cores/jre/                       a Java 17 runtime, trimmed to what FreeJ2ME uses

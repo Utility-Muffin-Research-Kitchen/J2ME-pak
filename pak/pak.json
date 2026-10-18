@@ -25,7 +25,7 @@
         "default_core": "freej2me_plus",
         "alternate_cores": [],
         "icon_flat": "art/J2ME.png",
-        "icon_photographic": null,
+        "icon_photographic": "art/J2ME-photo.png",
         "group": null,
         "bios_directory": null
       }
@@ -43,6 +43,16 @@
         "supports_menu": true,
         "supports_savestate": false,
         "supports_disk_control": false
+      }
+    ]
+  },
+  "content_art": {
+    "schema": 2,
+    "systems": [
+      {
+        "id": "J2ME",
+        "wordmark": "art/J2ME-wordmark.png",
+        "grid_icon": "art/J2ME-grid.png"
       }
     ]
   }

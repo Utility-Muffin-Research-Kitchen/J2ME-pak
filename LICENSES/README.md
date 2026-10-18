@@ -14,6 +14,8 @@ redistributing the built pak.
 | Third-party code inside the runtime (FreeType, HarfBuzz, libpng, libjpeg, giflib, Little CMS, ICU data, ...) | Various | `cores/jre/legal/<module>/*.md` in the package |
 | This repository's build system, manifests, scripts | MIT (see `REPO-LICENSE.txt`) | - |
 | `pak/art/J2ME.png` | CC BY-SA 4.0 | `../pak/art/LICENSE-ASSETS.md` |
+| `pak/art/J2ME-photo.png` (AI-generated render) | No rights claimed | `../pak/art/LICENSE-ASSETS.md` |
+| `pak/art/J2ME-wordmark.png`, `pak/art/J2ME-grid.png` | CC0 1.0 (lettering); Lexend font OFL 1.1 | `../pak/art/WORDMARK-SOURCE.md`, `../pak/art/GRID-ICON-SOURCE.md` |
 
 The package keeps the runtime's `legal/` directory exactly as jlink wrote it,
 except that jlink's links between duplicate notices are replaced by copies:
