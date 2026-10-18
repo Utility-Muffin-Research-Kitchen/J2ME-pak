@@ -134,7 +134,7 @@ green LCD backlight effect is off, two MIDI synthesizers start instead of four
 (about half a second faster at every launch), and the pointer can follow the left
 stick. [`core/PROVENANCE.md`](core/PROVENANCE.md) explains each change.
 
-The runtime is Azul Zulu 17 linked down to three modules, about 93 MB on the
+The runtime is Azul Zulu 17 linked down to three modules, about 67 MB on the
 card. [`runtime/PROVENANCE.md`](runtime/PROVENANCE.md) says what was kept and
 why.
 

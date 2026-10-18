@@ -34,7 +34,7 @@ CDN, pinned by sha256. Its own `jlink` links its own `jmods`:
 ```
 jlink --add-modules java.base,java.desktop,jdk.charsets \
       --strip-java-debug-attributes --no-header-files --no-man-pages \
-      --compress=0
+      --compress=2
 ```
 
 ### Why these modules
@@ -49,23 +49,34 @@ jlink --add-modules java.base,java.desktop,jdk.charsets \
 The jar carries its own copies of some `javax.xml` and `org.w3c.dom` classes;
 `java.xml` shadows them, as it does on any desktop JDK 9 or later.
 
-### Size
+### Size and startup
 
-| Variant | Size |
-| --- | --- |
-| Shipped: uncompressed, with CDS | 93.0 MB (81.4 MB + 11.7 MB `classes.jsa`) |
-| `--compress=2`, no CDS | 54 MB |
-| Full Zulu 17 JRE as other packs ship it | about 138 MB |
+Measured on the MLP1 on 2026-10-17 with a probe MIDlet: seconds from the
+launch request to the MIDlet's first paint, one cold run (page cache dropped)
+and two warm runs per variant, all with the `3830c72` core (four MIDI
+synthesizers).
 
-`--compress=0` is deliberate: a compressed module image inflates every class
-it loads, on a Cortex-A55. The download is a zip either way. Whether the
-smaller image is worth its startup cost is for device measurement to settle.
+| Runtime | On the card | Cold | Warm |
+| --- | --- | --- | --- |
+| **Shipped:** `--compress=2` with CDS | 67.3 MB (55.6 MB + 11.7 MB `classes.jsa`) | 8.44 | 5.44, 5.54 |
+| `--compress=0` with CDS | 93.0 MB | 8.54 | 5.64, 5.60 |
+| `--compress=2`, no CDS | 55.6 MB | 8.70 | 5.79, 5.76 |
+| `--compress=0`, no CDS | 81.4 MB | 9.27 | 5.88, 5.79 |
+| Full Zulu 17 JRE, as other packs ship it | about 138 MB | - | - |
+
+A compressed module image inflates each class as it loads it, which looked
+like a risk on a Cortex-A55. It wasn't: the CDS archive already holds the
+classes Java needs to start, and the compressed image was no slower in any
+paired run, within noise. It is 25.7 MB smaller on the card. The download
+grows by about 6 MB, because zip can't shrink an image that is already
+compressed.
 
 ### CDS
 
 `lib/server/classes.jsa` is the default class-data-sharing archive, dumped
 after linking with `java -Xshare:dump -Xmx128M -Xms128M`, which is how OpenJDK's
-own build makes it. jlink's `--generate-cds-archive` would also write
+own build makes it. In the table above it saves 0.26-0.73 s on a cold start and
+0.2-0.3 s on a warm one, for 11.7 MB. jlink's `--generate-cds-archive` would also write
 `classes_nocoops.jsa`, which applies only to heaps over 32 GB.
 
 JDK 17 does not dump this archive byte-for-byte reproducibly here (about 20

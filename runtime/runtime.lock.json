@@ -52,16 +52,16 @@
   "runtime": {
     "modules": ["java.base", "java.desktop", "jdk.charsets"],
     "modules_note": "jdeps on the jar reports java.base and java.desktop; jlink adds java.desktop's requirements (java.datatransfer, java.prefs, java.xml). jdk.charsets is not visible to jdeps: FreeJ2ME names Shift_JIS, EUC_KR and Big5 by string, and the core's encoding option passes -Dfile.encoding=Shift_JIS or EUC_KR. Without it those lookups throw.",
-    "jlink_options": ["--strip-java-debug-attributes", "--no-header-files", "--no-man-pages", "--compress=0"],
-    "jlink_options_note": "--strip-debug would also strip native symbols, which needs objcopy and gains nothing: the Zulu libraries carry no debug sections beyond a debuglink. --compress=0 keeps class loading free of inflation on the Cortex-A55; the download is zipped anyway.",
+    "jlink_options": ["--strip-java-debug-attributes", "--no-header-files", "--no-man-pages", "--compress=2"],
+    "jlink_options_note": "--strip-debug would also strip native symbols, which needs objcopy and gains nothing: the Zulu libraries carry no debug sections beyond a debuglink. --compress=2 (zip) was measured on the MLP1 on 2026-10-17 against --compress=0, both with CDS: first paint was no slower in any paired run (cold 8.44 s vs 8.54 s, warm 5.44/5.54 s vs 5.64/5.60 s), because the CDS archive already covers the startup classes, and the image is about 25 MB smaller on the card.",
     "cds": "lib/server/classes.jsa, dumped with -Xshare:dump -Xmx128M -Xms128M (the heap size OpenJDK's own build uses) from jlink's default class list. jlink --generate-cds-archive would also write classes_nocoops.jsa, which only applies to heaps over 32 GB.",
     "cds_file": "lib/server/classes.jsa",
     "cds_note": "JDK 17 does not write this archive byte-for-byte reproducibly here: two dumps of the same tree differ in about 20 bytes (header CRCs, one header word, a few archived-heap bytes), and -Xint makes it worse. It is a derived cache of classes already in lib/modules, so tree_sha256 leaves it out and the build only requires that it exists. The JVM validates it at startup (JVM build and modules size) and ignores it, with a warning on stderr, if it does not match.",
     "directory": "jre",
-    "tree_sha256": "53cbd8cfb3f21a88cc9ba0b137a5f3bffef829ce7681215337261309ea0855b3",
+    "tree_sha256": "f5ba6ce5a146e0f27a62fd2915e5016655d9cd4a5f72579b1230fa22a70b0cd5",
     "tree_sha256_note": "scripts/tree-hash.py: for each regular file in byte order of its relative path, rel || 0x00 || mode (4 octal digits) || 0x00 || uint64_be(size) || bytes. Symlinks are refused; the build replaces jlink's legal-notice symlinks with copies so the tree is FAT32-safe.",
-    "size_bytes": 81364407,
+    "size_bytes": 55636938,
     "cds_size_bytes": 11665408,
-    "size_note": "93.0 MB on disk with the CDS archive. For comparison, --compress=2 gives 54 MB before CDS (vs 78 MB here); that trade is for device measurement to settle."
+    "size_note": "67.3 MB on disk with the CDS archive, recorded from two FORCE=1 rebuilds that agree (2026-10-18). The --compress=0 image it replaced was 93.0 MB (81.4 MB plus the same 11.7 MB archive)."
   }
 }
