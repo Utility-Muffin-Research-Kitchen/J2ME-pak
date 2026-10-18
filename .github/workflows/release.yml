@@ -1,0 +1,96 @@
+name: release
+
+# A v0.* tag builds the pak from the tagged commit, runs the same checks as
+# CI, and creates a DRAFT release with the pak, the corresponding source for
+# every binary in it, and SHA256SUMS. Publishing the draft and adding it to
+# the Pak Rat catalog stay manual steps.
+
+on:
+  push:
+    tags:
+      - "v0.*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CONTRACT_REF: b74130056342efdd6bdeb9ed7204968dd294fbde
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: The tag matches pak.json and pakrat.json
+        run: |
+          version="$(python3 -c 'import json; print(json.load(open("pak/pak.json"))["pak_version"])')"
+          store="$(python3 -c 'import json; print(json.load(open("pakrat.json"))["leaf"]["packages"][0]["version"])')"
+          floor="$(python3 -c 'import json; print(json.load(open("pak/pak.json"))["min_leaf_version"])')"
+          store_floor="$(python3 -c 'import json; print(json.load(open("pakrat.json"))["leaf"]["packages"][0]["min_leaf_version"])')"
+          test "$GITHUB_REF_NAME" = "v$version"
+          test "$store" = "$version"
+          test "$store_floor" = "$floor"
+
+      # The runtime build and the smoke test run linux/arm64 containers.
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Build, package and source
+        run: |
+          make core
+          make runtime
+          make dist-pakrat
+          make dist-source
+
+      - name: Check out the pinned contract
+        uses: actions/checkout@v4
+        with:
+          repository: Utility-Muffin-Research-Kitchen/leaf-contracts
+          ref: ${{ env.CONTRACT_REF }}
+          path: .contract
+
+      - name: Validate the packaged pak strictly
+        run: |
+          python3 scripts/validate-pak.py \
+            --contract "$PWD/.contract" \
+            --pak build/package/J2ME.pak --packaged
+
+      - name: Run the packaged core off-device
+        run: make smoke
+
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          commit="$(python3 -c 'import json; print(json.load(open("core/core.lock.json"))["source"]["commit"])')"
+          floor="$(python3 -c 'import json; print(json.load(open("pak/pak.json"))["min_leaf_version"])')"
+          cd build/dist
+          runtime_source="$(ls OpenJDK17U-jdk-sources_*.tar.gz)"
+          sha256sum J2ME.mlp1.pak.zip freej2me-plus-corresponding-source.tar.gz "$runtime_source" >SHA256SUMS
+          {
+            echo "J2ME ${GITHUB_REF_NAME#v} for Leaf on MLP1. Installing it adds a J2ME system; put your .jar and .kjx games in Roms/J2ME."
+            echo
+            echo "Needs Leaf $floor or later."
+            echo
+            echo "Built from FreeJ2ME-Plus ${commit:0:7} with core/leaf.patch, and a trimmed Eclipse Temurin 17 runtime."
+            echo "freej2me-plus-corresponding-source.tar.gz and $runtime_source are the corresponding source for every binary in the pak."
+            echo
+            echo '## SHA-256'
+            echo
+            echo '```'
+            cat SHA256SUMS
+            echo '```'
+          } >release-notes.md
+          gh release create "$GITHUB_REF_NAME" \
+            J2ME.mlp1.pak.zip freej2me-plus-corresponding-source.tar.gz "$runtime_source" SHA256SUMS \
+            --repo "$GITHUB_REPOSITORY" \
+            --draft \
+            --verify-tag \
+            --title "J2ME $GITHUB_REF_NAME" \
+            --notes-file release-notes.md

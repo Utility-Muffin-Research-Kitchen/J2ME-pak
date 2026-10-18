@@ -146,7 +146,7 @@ why.
 
 ## Requirements
 
-- An MLP1 on Leaf 0.12.0 or later.
+- An MLP1 on Leaf 0.13.0 or later.
 - The stock firmware's fonts. Java draws game text with fontconfig and the Noto
   fonts that ship with the MLP1 firmware; the pak doesn't bundle a font.
 
