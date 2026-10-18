@@ -26,6 +26,9 @@
         "alternate_cores": [],
         "icon_flat": "art/J2ME.png",
         "icon_photographic": "art/J2ME-photo.png",
+        "screenscraper_platform_ids": [
+          302
+        ],
         "group": null,
         "bios_directory": null
       }
