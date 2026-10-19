@@ -14,8 +14,8 @@
   },
   "patch": {
     "file": "core/leaf.patch",
-    "sha256": "5f22414ed27b3455f326133cbc8befdbac112cc40e2aef5a6b30ac098c4f0fd1",
-    "note": "Runs the jar and Java runtime bundled beside the core by absolute path with the runtime's C.UTF-8 locale selected (LOCPATH, LC_ALL), ties the JVM's life to the frontend with PR_SET_PDEATHSIG, exits the forked child when exec fails, fails retro_load_game() when the JVM is not running, and drops the system-directory firmware entry from the .info file. It also sets this build's defaults for a one-stick Nintendo-style handheld: Fire on A (9 on Y), LCD backlight off, 2 MIDI synthesizers, a Pointer Stick option that lets the left stick move the pointer and keeps it up, with L3 tapping, for 3 s after the stick stops or until another button is pressed, and a pointer tip that stays on the canvas. Its one Java hunk, which the runtime build applies to the jar, decodes the game's path with sun.jnu.encoding instead of the game's text encoding."
+    "sha256": "ca6e0569489a45caa34afb082eba23d6f20f5eb68c651fd3462eeb256fbfecac",
+    "note": "Runs the jar and Java runtime bundled beside the core by absolute path with the runtime's C.UTF-8 locale selected (LOCPATH, LC_ALL), ties the JVM's life to the frontend with PR_SET_PDEATHSIG, exits the forked child when exec fails, fails retro_load_game() when the JVM is not running, and drops the system-directory firmware entry from the .info file. It also sets this build's defaults for a one-stick Nintendo-style handheld: Fire on A (9 on Y), LCD backlight off, 2 MIDI synthesizers, a Pointer Stick option that lets the left stick move the pointer and keeps it up, with L3 tapping, for 3 s after the stick stops or until another button is pressed, and a pointer tip that stays on the canvas. Its Java hunks, which the runtime build applies to the jar, decode the game's path with sun.jnu.encoding instead of the game's text encoding and stop URL-decoding it: in Libretro.java for the path the core sends, in MobilePlatform.java for a .jad beside the jar."
   },
   "toolchain": {
     "image": "ghcr.io/utility-muffin-research-kitchen/mlp1-toolchain:latest",

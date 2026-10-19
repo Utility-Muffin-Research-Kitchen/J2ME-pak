@@ -77,10 +77,17 @@ on this device at all. The patch changes six things, all Linux-only:
    fail for every category. That alone isn't enough: `Libretro.java` decoded
    the path the core sends with `file.encoding`, which FreeJ2ME uses as the
    game's text encoding (`ISO_8859_1`, `Shift_JIS` or `EUC_KR`), so the
-   UTF-8 bytes of the name came back as other characters. The patch's one
-   Java hunk decodes them with `sun.jnu.encoding`, the exact inverse of what
-   `java.io.File` does with the string. The runtime build applies the same
-   patch before compiling the jar.
+   UTF-8 bytes of the name came back as other characters. The patch decodes
+   them with `sun.jnu.encoding`, the exact inverse of what `java.io.File`
+   does with the string. `Libretro.java` then URL-decoded the result,
+   although the core sends what `realpath()` returns, never a URL: a `+` or
+   a `%20` in the name became a space, so `Tetris+ Deluxe.jar` was "not
+   found", and a bare `%`, as in `100% Fun.jar`, threw and the JVM quit
+   without a word in its log. The patch passes the path on as it is. When a
+   `.jad` with the same name sits beside the jar, `MobilePlatform.java` reads
+   it from its `file:` URI, and it URL-decoded that URI too, which turned a
+   `+` into a space again; the patch lets `URI` decode it instead. The
+   runtime build applies the same patch before compiling the jar.
 
 It also sets `firmware_count = 0` in `freej2me_plus_libretro.info`, because the
 jar is no longer something you place in the system directory.
@@ -122,8 +129,11 @@ platform this patch is built for:
 `tests/smoke-core.sh` checks the six numbered changes against the packaged
 core in an arm64 container, and fails against the unpatched upstream core on
 the SIGKILL, failed-exec and refused-game cases. For the sixth it loads the
-shipped locale with the sysroot's glibc 2.38, and opens a game whose name is
-in Chinese, Japanese and Korean. The defaults were checked on
+shipped locale with the sysroot's glibc 2.38, and opens games whose names are
+in Chinese, Japanese and Korean, hold a `+`, a bare `%` or a `%20`, or have a
+`.jad` beside the jar. Without the URL-decoding changes the `+`, `%` and
+`%20` games don't open, and without the `MobilePlatform.java` one the game
+with a `.jad` doesn't. The defaults were checked on
 an MLP1: key codes logged by a test MIDlet, colours read off the screen,
 music in three MIDI games, and the left-stick pointer tapping a touch build.
 The sixth change was checked on an MLP1 on 2026-10-19 with the smoke test's

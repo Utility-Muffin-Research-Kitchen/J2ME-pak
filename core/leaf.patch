@@ -572,19 +572,42 @@ index 9bbcfc95..e925f515 100644
  
  description = "A fork of FreeJ2ME with improved compatibility and better libretro support. This core emulates Java ME applications and games for Java-based mobile phones."
 diff --git a/src/org/recompile/freej2me/Libretro.java b/src/org/recompile/freej2me/Libretro.java
-index db714c6e..e60f7fea 100644
+index db714c6e..92ab6114 100644
 --- a/src/org/recompile/freej2me/Libretro.java
 +++ b/src/org/recompile/freej2me/Libretro.java
-@@ -175,7 +175,11 @@ public class Libretro
+@@ -175,9 +175,15 @@ public class Libretro
  								buffer = new byte[code];
  								bytesRead = System.in.read(buffer);
  
 -								path = new String(buffer, 0, bytesRead);
+-
+-								if(Mobile.getPlatform().load(getFormattedLocation(URLDecoder.decode(path, Mobile.textEncoding))))
 +								/* Leaf: these are the file name's bytes as the filesystem has them.
 +								 * Decode them the way java.io.File encodes them back. file.encoding
 +								 * is the game's text encoding (ISO_8859_1, Shift_JIS or EUC_KR), and
-+								 * with it a name with CJK or accented characters is never found. */
++								 * with it a name with CJK or accented characters is never found.
++								 * The path comes from realpath(), never a URL. URL-decoding it turned
++								 * a "+" or "%20" in the name into a space and threw on a bare "%". */
 +								path = new String(buffer, 0, bytesRead, System.getProperty("sun.jnu.encoding"));
- 
- 								if(Mobile.getPlatform().load(getFormattedLocation(URLDecoder.decode(path, Mobile.textEncoding))))
++
++								if(Mobile.getPlatform().load(getFormattedLocation(path)))
  								{
+ 									if(Mobile.libretroRestartRequested == 1)
+ 									{
+diff --git a/src/org/recompile/mobile/MobilePlatform.java b/src/org/recompile/mobile/MobilePlatform.java
+index f5a1ea8d..576bf34e 100644
+--- a/src/org/recompile/mobile/MobilePlatform.java
++++ b/src/org/recompile/mobile/MobilePlatform.java
+@@ -769,8 +769,10 @@ public class MobilePlatform
+ 					MobilePlatform.checkFileEncoding();
+ 				}
+ 
+-				String preparedFileName = fileName.replace("file:", "").trim();
+-				try { preparedFileName = URLDecoder.decode(preparedFileName, Mobile.textEncoding); }
++				/* Leaf: fileName is a file: URI from File.toURI(), so URI decodes it.
++				 * URLDecoder decodes form data and turns a "+" in the name into a space. */
++				String preparedFileName;
++				try { preparedFileName = new File(new URI(fileName)).getPath(); }
+ 				catch (Exception e)
+ 				{
+ 					System.err.println("Error decoding file name: " + e.getMessage());

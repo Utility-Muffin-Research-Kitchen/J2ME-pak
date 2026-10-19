@@ -15,9 +15,11 @@ cores/jre/lib/locale/C.utf8/      glibc's C.UTF-8 locale, for file names
 Upstream `build.xml`, target `jar-libretro`, at the same commit as the core
 (`baca76a4dda6f30abac67fb4a3db009eed05f91c`), built from `git archive` of that
 commit rather than the core build's working tree, with the same hash-pinned
-`core/leaf.patch` applied. The patch changes one line of Java: `Libretro.java`
-decodes the game's path with `sun.jnu.encoding` instead of the game's text
-encoding (change 6 in `core/PROVENANCE.md`). `build.xml` leaves out
+`core/leaf.patch` applied. The patch changes a few lines of Java, all for
+change 6 in `core/PROVENANCE.md`: `Libretro.java` decodes the game's path with
+`sun.jnu.encoding` instead of the game's text encoding and no longer
+URL-decodes it, and `MobilePlatform.java` reads a `.jad` beside the jar
+through its `file:` URI instead of URL-decoding the URI. `build.xml` leaves out
 `src/libretro`, so the patch's C hunks don't reach the jar.
 
 `build.xml` compiles for Java 1.5 against `${java.home}/lib/rt.jar`, which only

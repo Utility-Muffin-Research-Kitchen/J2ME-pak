@@ -16,7 +16,9 @@
 #   5. a core with no jar anywhere reports it and starts nothing;
 #   6. the JVM gets the runtime's own C.UTF-8 locale, replacing an inherited
 #      LC_ALL and LOCPATH, and the locale loads with the device's glibc;
-#   7. a game whose file name is not ASCII opens.
+#   7. games open whatever their file names hold: characters that are not
+#      ASCII, "+", a bare "%", or a "%20" that is part of the name, also with
+#      a .jad beside the jar.
 #
 # The image gets fontconfig and DejaVu from the distribution for this test
 # only: the MLP1 firmware provides fontconfig and its Noto fonts, and Java
@@ -159,29 +161,51 @@ docker run --rm --init --platform "$PLATFORM" \
     mv /usr/lib/locale.image /usr/lib/locale
     ok "runtime C.UTF-8 locale: selected for the JVM, loads with glibc 2.38"
 
-    # A MIDlet suite whose manifest is all FreeJ2ME reads before naming the
-    # suite in its log. That line means the JVM found and opened the jar.
-    GAMES="/tmp/Roms/J2ME/游戏 ゲーム 게임"
-    mkdir -p "$GAMES" /tmp/bios-cjk
-    python3 -I -c "import sys, zipfile
+    # Each game is a MIDlet suite whose manifest is all FreeJ2ME reads before
+    # naming the suite in its log. That line means the JVM found and opened
+    # the jar. Unpatched, FreeJ2ME URL-decodes the plain path the core sends:
+    # "+" becomes a space, "%20" a space too, and a bare "%" ends the JVM
+    # without a word in its log.
+    jvm_gone() {
+      local state
+      state=$(sed -n "s/^State:\t\(.\).*/\1/p" /proc/$1/status 2>/dev/null || true)
+      [ -z "$state" ] || [ "$state" = Z ]
+    }
+    open_game() { # <game> <what> [jad]
+      local game="$1" what="$2" bios log harness java=
+      bios=$(mktemp -d /tmp/bios-XXXXXX)
+      log=$bios/freej2me_system/FreeJ2ME.log
+      mkdir -p "$(dirname "$game")"
+      python3 -I -c "import sys, zipfile
 with zipfile.ZipFile(sys.argv[1], \"w\") as z:
     z.writestr(\"META-INF/MANIFEST.MF\", \"Manifest-Version: 1.0\\r\\nMIDlet-Name: Smoke\\r\\nMIDlet-1: Smoke, , Smoke\\r\\n\\r\\n\")
-" "$GAMES/测试 ゲーム 게임.jar"
-    LANG=en_US.UTF-8 /tmp/harness "$CORES/freej2me_plus_libretro.so" /tmp/bios-cjk load \
-      "$GAMES/测试 ゲーム 게임.jar" >/tmp/7.out 2>/tmp/7.err &
-    HARNESS=$!
-    LOG=/tmp/bios-cjk/freej2me_system/FreeJ2ME.log
-    for _ in $(seq 1 1200); do
-      grep -q -e "Loading MIDlet: " -e "not found" "$LOG" 2>/dev/null && break
-      kill -0 "$HARNESS" 2>/dev/null || break
-      sleep 0.1
-    done
-    kill -KILL "$HARNESS" 2>/dev/null || true
-    wait "$HARNESS" 2>/dev/null || true
-    expect /tmp/7.out "load_game=1" "non-ASCII game accepted"
-    grep -q "Loading MIDlet: Smoke | Main Class: Smoke" "$LOG" \
-      || { cat /tmp/7.out /tmp/7.err "$LOG" 2>/dev/null; fail "the JVM did not open a game with a non-ASCII name"; }
-    ok "a game named in Chinese, Japanese and Korean opens"
+" "$game"
+      [ "${3:-}" != jad ] || printf "MIDlet-Name: Smoke\r\nMIDlet-1: Smoke, , Smoke\r\n" >"${game%.jar}.jad"
+      LANG=en_US.UTF-8 /tmp/harness "$CORES/freej2me_plus_libretro.so" "$bios" load "$game" \
+        >"$bios/out" 2>"$bios/err" &
+      harness=$!
+      for _ in $(seq 1 1200); do
+        grep -q -e "Loading MIDlet: " -e "not found" "$log" 2>/dev/null && break
+        kill -0 "$harness" 2>/dev/null || break
+        [ -n "$java" ] || java=$(sed -n "s/^java_pid=//p" "$bios/out")
+        [ "${java:-0}" != 0 ] && grep -q "^load_game=" "$bios/out" && jvm_gone "$java" && break
+        sleep 0.1
+      done
+      kill -KILL "$harness" 2>/dev/null || true
+      wait "$harness" 2>/dev/null || true
+      grep -q "Loading MIDlet: Smoke | Main Class: Smoke" "$log" 2>/dev/null \
+        || { cat "$bios/out" "$bios/err" "$log" 2>/dev/null; fail "the JVM did not open $what"; }
+      expect "$bios/out" "load_game=1" "$what accepted"
+      if [ "${3:-}" = jad ]; then
+        grep -q "Accompanying JAD found!" "$log" || { cat "$log"; fail "$what: the .jad was not read"; }
+      fi
+      ok "$what opens"
+    }
+    open_game "/tmp/Roms/J2ME/游戏 ゲーム 게임/测试 ゲーム 게임.jar" "a game named in Chinese, Japanese and Korean"
+    open_game "/tmp/Roms/J2ME/Tetris+ Deluxe.jar" "a game with + in its name"
+    open_game "/tmp/Roms/J2ME/100% Fun.jar" "a game with a bare % in its name"
+    open_game "/tmp/Roms/J2ME/Space%20Impact.jar" "a game with %20 in its name"
+    open_game "/tmp/Roms/J2ME/Bounce+ (Nokia).jar" "a game with + in its name and a .jad beside it" jad
 
     echo "PASS smoke-core"
   '
