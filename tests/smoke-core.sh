@@ -18,7 +18,8 @@
 #      LC_ALL and LOCPATH, and the locale loads with the device's glibc;
 #   7. games open whatever their file names hold: characters that are not
 #      ASCII, "+", a bare "%", or a "%20" that is part of the name, also with
-#      a .jad beside the jar.
+#      a .jad beside the jar;
+#   8. a MIDlet printing to System.out never lands inside a frame.
 #
 # The image gets fontconfig and DejaVu from the distribution for this test
 # only: the MLP1 firmware provides fontconfig and its Noto fonts, and Java
@@ -40,18 +41,22 @@ die() { echo "smoke-core: $*" >&2; exit 1; }
 # The arm64 container is the runtime lock's: the linux/arm64 manifest of the
 # toolchain index, pinned directly so it never collides with the amd64 variant
 # the core build pulled (see the note in runtime.lock.json).
-read -r IMAGE DIGEST PLATFORM CROSS < <(python3 -c '
+read -r IMAGE DIGEST PLATFORM CROSS JDK8 JDK8_ROOT < <(python3 -c '
 import json, sys
-c = json.load(open(sys.argv[1]))["container"]
+r = json.load(open(sys.argv[1]))
+c = r["container"]
 t = json.load(open(sys.argv[2]))["toolchain"]
-print(c["image"], c["digest"], c["platform"], t["cross_prefix"])
+print(c["image"], c["digest"], c["platform"], t["cross_prefix"], r["inputs"][0]["file"], r["inputs"][0]["root"])
 ' "$RUNTIME_LOCK" "$LOCK")
 IMAGE_REF="${IMAGE%%:*}@${DIGEST}"
+# The build's own JDK 8 compiles the test MIDlet for check 8.
+[ -f "$BUILD_DIR/downloads/$JDK8" ] || die "no $JDK8 in $BUILD_DIR/downloads; run make runtime first"
 
 docker run --rm --init --platform "$PLATFORM" \
   -v "$PACKAGE":/media/sdcard1/Apps/mlp1/J2ME.pak:ro \
   -v "$REPO_ROOT/tests":/tests:ro \
   -v "$SRC_DIR/src/libretro":/harness-include:ro \
+  -v "$BUILD_DIR/downloads/$JDK8":/jdk8.tar.gz:ro \
   "$IMAGE_REF" \
   /bin/bash -euo pipefail -c '
     PAK=/media/sdcard1/Apps/mlp1/J2ME.pak
@@ -206,6 +211,27 @@ with zipfile.ZipFile(sys.argv[1], \"w\") as z:
     open_game "/tmp/Roms/J2ME/100% Fun.jar" "a game with a bare % in its name"
     open_game "/tmp/Roms/J2ME/Space%20Impact.jar" "a game with %20 in its name"
     open_game "/tmp/Roms/J2ME/Bounce+ (Nokia).jar" "a game with + in its name and a .jad beside it" jad
+
+    # tests/midlets/NoisyProbe.java paints #336699 and prints a Diamond Rush
+    # key-event line every millisecond. Every frame after the first painted
+    # one has to be entirely that colour: a line inside a frame shifts its
+    # bytes. On an MLP1 the 0.1.0 jar garbled 1487 of 1800 such frames.
+    mkdir -p /tmp/noisy/classes /tmp/bios-noisy
+    tar -xzf /jdk8.tar.gz -C /tmp/noisy
+    JDK8_BIN=/tmp/noisy/'"$JDK8_ROOT"'/bin
+    "$JDK8_BIN/javac" -nowarn -source 1.4 -target 1.4 -cp "$CORES/freej2me_plus-lr.jar" \
+      -d /tmp/noisy/classes /tests/midlets/NoisyProbe.java 2>/dev/null \
+      || fail "the test MIDlet does not compile"
+    printf "%s\n" "Manifest-Version: 1.0" "MIDlet-Name: NoisyProbe" "MIDlet-Vendor: UMRK test" \
+      "MIDlet-Version: 1.0" "MIDlet-1: NoisyProbe, , NoisyProbe" \
+      "MicroEdition-Configuration: CLDC-1.1" "MicroEdition-Profile: MIDP-2.0" >/tmp/noisy/manifest.mf
+    (cd /tmp/noisy/classes && "$JDK8_BIN/jar" cfm /tmp/noisy/NoisyProbe.jar /tmp/noisy/manifest.mf *.class)
+    /tmp/harness "$CORES/freej2me_plus_libretro.so" /tmp/bios-noisy run /tmp/noisy/NoisyProbe.jar 300 336699 \
+      >/tmp/8.out 2>/tmp/8.err || { cat /tmp/8.out /tmp/8.err; fail "run harness exited non-zero"; }
+    expect /tmp/8.out "load_game=1" "noisy MIDlet accepted"
+    grep -q "^first_good=[1-9]" /tmp/8.out || { cat /tmp/8.out; fail "the MIDlet never showed a clean frame"; }
+    expect /tmp/8.out "frames_bad=0" "frames garbled by a MIDlet printing to System.out"
+    ok "a MIDlet printing to System.out: $(sed -n "s/^frames_good=//p" /tmp/8.out) clean frames, none garbled"
 
     echo "PASS smoke-core"
   '

@@ -10,6 +10,10 @@
  *   core-harness <core.so> <system_dir> load   start, describe, then try retro_load_game()
  *   core-harness <core.so> <system_dir> load <game>
  *                                              the same with that game, then wait to be killed
+ *   core-harness <core.so> <system_dir> run <game> <frames> <rrggbb>
+ *                                              load the game and run it until that many frames
+ *                                              have followed the first one entirely that colour
+ *                                              (or for 300 s), counting those that are not
  *
  * Output lines are "key=value". Nothing here is shipped.
  */
@@ -20,16 +24,24 @@
 #include <signal.h>
 #include <stdarg.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "libretro.h"
 
 static const char *system_dir;
 static char save_dir[4096];
+
+/* run mode: frames checked against one expected colour */
+static uint32_t expected_rgb;
+static long frames_seen, frames_good, frames_bad, first_good = -1;
+static unsigned last_width, last_height;
+static uint32_t last_corner, last_centre;
 
 static void core_log(enum retro_log_level level, const char *fmt, ...)
 {
@@ -39,6 +51,14 @@ static void core_log(enum retro_log_level level, const char *fmt, ...)
 	va_start(args, fmt);
 	vfprintf(stderr, fmt, args);
 	va_end(args);
+}
+
+/* retro_run() switches rumble off every frame without checking that the
+   frontend gave it an interface; RetroArch always does. */
+static bool set_rumble_state(unsigned port, enum retro_rumble_effect effect, uint16_t strength)
+{
+	(void)port; (void)effect; (void)strength;
+	return true;
 }
 
 static bool environment(unsigned cmd, void *data)
@@ -62,8 +82,18 @@ static bool environment(unsigned cmd, void *data)
 			var->value = "240x320";
 			return true;
 		}
+		/* The option's default, which a frontend passes in. Unanswered, the
+		   core keeps upstream's Green, which tints every pixel. */
+		if (strcmp(var->key, "freej2me_backlightcolor") == 0)
+		{
+			var->value = "Disabled";
+			return true;
+		}
 		return false;
 	}
+	case RETRO_ENVIRONMENT_GET_RUMBLE_INTERFACE:
+		((struct retro_rumble_interface *)data)->set_rumble_state = set_rumble_state;
+		return true;
 	case RETRO_ENVIRONMENT_SET_MESSAGE_EXT:
 		printf("message=%s\n", ((const struct retro_message_ext *)data)->msg);
 		fflush(stdout);
@@ -77,6 +107,47 @@ static bool environment(unsigned cmd, void *data)
 		return false;
 	}
 }
+
+/* Every frame after the first that is entirely the expected colour has to
+   be entirely that colour too: the test MIDlet paints nothing else. */
+static void video(const void *data, unsigned width, unsigned height, size_t pitch)
+{
+	const unsigned char *row = data;
+	bool good = data != NULL && width > 0 && height > 0;
+	unsigned x, y;
+
+	frames_seen++;
+	if (good)
+	{
+		last_width = width;
+		last_height = height;
+		last_corner = *(const uint32_t *)data & 0xFFFFFF;
+		last_centre = ((const uint32_t *)(row + (height / 2) * pitch))[width / 2] & 0xFFFFFF;
+	}
+	for (y = 0; good && y < height; y++, row += pitch)
+	{
+		const uint32_t *px = (const uint32_t *)row;
+		for (x = 0; x < width; x++)
+		{
+			if ((px[x] & 0xFFFFFF) != expected_rgb) { good = false; break; }
+		}
+	}
+	if (good)
+	{
+		frames_good++;
+		if (first_good < 0) { first_good = frames_seen; }
+	}
+	else if (first_good >= 0) { frames_bad++; }
+}
+
+static void input_poll(void) { }
+static int16_t input_state(unsigned port, unsigned device, unsigned index, unsigned id)
+{
+	(void)port; (void)device; (void)index; (void)id;
+	return 0;
+}
+static void audio_sample(int16_t left, int16_t right) { (void)left; (void)right; }
+static size_t audio_sample_batch(const int16_t *data, size_t frames) { (void)data; return frames; }
 
 /* The only child of this process, or 0. */
 static pid_t child_pid(void)
@@ -141,9 +212,11 @@ int main(int argc, char **argv)
 	char link[64];
 	ssize_t n;
 
-	if (argc != 4 && !(argc == 5 && strcmp(argv[3], "load") == 0))
+	if (argc != 4 && !(argc == 5 && strcmp(argv[3], "load") == 0) &&
+	    !(argc == 7 && strcmp(argv[3], "run") == 0))
 	{
-		fprintf(stderr, "usage: %s <core.so> <system_dir> init|hold|load [game]\n", argv[0]);
+		fprintf(stderr, "usage: %s <core.so> <system_dir> init|hold|load [game]\n"
+			"       %s <core.so> <system_dir> run <game> <frames> <rrggbb>\n", argv[0], argv[0]);
 		return 2;
 	}
 	system_dir = argv[2];
@@ -201,6 +274,44 @@ int main(int argc, char **argv)
 			fflush(stdout);
 			for (;;) { pause(); }
 		}
+	}
+
+	if (strcmp(argv[3], "run") == 0)
+	{
+		/* A frontend's loop, minus the frontend: every retro_run() requests
+		   one frame from the JVM and hands it to video(). */
+		struct retro_game_info info = { argv[4], NULL, 0, NULL };
+		void (*run)(void) = (void (*)(void))dlsym(core, "retro_run");
+		void (*set_video)(retro_video_refresh_t) = (void (*)(retro_video_refresh_t))dlsym(core, "retro_set_video_refresh");
+		void (*set_poll)(retro_input_poll_t) = (void (*)(retro_input_poll_t))dlsym(core, "retro_set_input_poll");
+		void (*set_state)(retro_input_state_t) = (void (*)(retro_input_state_t))dlsym(core, "retro_set_input_state");
+		void (*set_audio)(retro_audio_sample_t) = (void (*)(retro_audio_sample_t))dlsym(core, "retro_set_audio_sample");
+		void (*set_batch)(retro_audio_sample_batch_t) = (void (*)(retro_audio_sample_batch_t))dlsym(core, "retro_set_audio_sample_batch");
+		long frames = atol(argv[5]);
+		time_t give_up = time(NULL) + 300;
+
+		if (!run || !set_video || !set_poll || !set_state || !set_audio || !set_batch)
+		{
+			fprintf(stderr, "missing libretro symbols\n");
+			return 2;
+		}
+		expected_rgb = (uint32_t)strtoul(argv[6], NULL, 16) & 0xFFFFFF;
+		set_video(video);
+		set_poll(input_poll);
+		set_state(input_state);
+		set_audio(audio_sample);
+		set_batch(audio_sample_batch);
+		printf("load_game=%d\n", load_game(&info) ? 1 : 0);
+		fflush(stdout);
+		/* The JVM answers every request at once, with a blank frame until the
+		   MIDlet has painted, so count from the first good frame: under
+		   emulation that can take many frames. */
+		while ((first_good < 0 || frames_seen - first_good < frames) && time(NULL) < give_up) { run(); }
+		printf("frames_seen=%ld\nfirst_good=%ld\nframes_good=%ld\nframes_bad=%ld\n",
+			frames_seen, first_good, frames_good, frames_bad);
+		printf("last_frame=%ux%u corner=%06x centre=%06x\n", last_width, last_height,
+			(unsigned)last_corner, (unsigned)last_centre);
+		fflush(stdout);
 	}
 
 	deinit();
