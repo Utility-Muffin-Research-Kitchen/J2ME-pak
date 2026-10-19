@@ -14,8 +14,8 @@
   },
   "patch": {
     "file": "core/leaf.patch",
-    "sha256": "d5566a086b1cf8c81c0c6c6f661ad537bb4230df2cf9276b1ad720e9c0297a2a",
-    "note": "Runs the jar and Java runtime bundled beside the core by absolute path, ties the JVM's life to the frontend with PR_SET_PDEATHSIG, exits the forked child when exec fails, fails retro_load_game() when the JVM is not running, and drops the system-directory firmware entry from the .info file. It also sets this build's defaults for a one-stick Nintendo-style handheld: Fire on A (9 on Y), LCD backlight off, 2 MIDI synthesizers, a Pointer Stick option that lets the left stick move the pointer and keeps it up, with L3 tapping, for 3 s after the stick stops or until another button is pressed, and a pointer tip that stays on the canvas."
+    "sha256": "5f22414ed27b3455f326133cbc8befdbac112cc40e2aef5a6b30ac098c4f0fd1",
+    "note": "Runs the jar and Java runtime bundled beside the core by absolute path with the runtime's C.UTF-8 locale selected (LOCPATH, LC_ALL), ties the JVM's life to the frontend with PR_SET_PDEATHSIG, exits the forked child when exec fails, fails retro_load_game() when the JVM is not running, and drops the system-directory firmware entry from the .info file. It also sets this build's defaults for a one-stick Nintendo-style handheld: Fire on A (9 on Y), LCD backlight off, 2 MIDI synthesizers, a Pointer Stick option that lets the left stick move the pointer and keeps it up, with L3 tapping, for 3 s after the stick stops or until another button is pressed, and a pointer tip that stays on the canvas. Its one Java hunk, which the runtime build applies to the jar, decodes the game's path with sun.jnu.encoding instead of the game's text encoding."
   },
   "toolchain": {
     "image": "ghcr.io/utility-muffin-research-kitchen/mlp1-toolchain:latest",
@@ -27,9 +27,9 @@
   "artifact": {
     "file_name": "freej2me_plus_libretro.so",
     "info_file_name": "freej2me_plus_libretro.info",
-    "sha256": "9b069be50d03e3151aff6d3a4293ce307767eaec023598b131f09b8c70ff9919",
+    "sha256": "d4471accda749a67c162f8a21ad27237a2a11869c4f55b7e7e9e667ac16715e4",
     "info_sha256": "fd197809f83466bf649b7ad0016e9ebf6bce87c83297f244ff205463f936b680",
-    "size_bytes": 321040,
-    "note": "Recorded from clean builds in the digest-pinned image on 2026-10-18 (two FORCE=1 rebuilds agree with the cached build). CI is the independent verifier; investigate any mismatch rather than overwriting these values."
+    "size_bytes": 321056,
+    "note": "Recorded from clean builds in the digest-pinned image on 2026-10-19 (a FORCE=1 rebuild and a build in a fresh BUILD_DIR agree). CI is the independent verifier; investigate any mismatch rather than overwriting these values."
   }
 }

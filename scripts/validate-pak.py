@@ -77,6 +77,7 @@ def check_packaged_runtime(pak_dir: Path) -> list[str]:
             failures.append(f"missing or non-executable cores/{rel}")
     for rel in ("jre/lib/server/libjvm.so", "jre/lib/modules", "jre/lib/server/classes.jsa",
                 "jre/lib/libjsound.so", "jre/lib/libfontmanager.so",
+                "jre/lib/locale/C.utf8/LC_CTYPE",
                 "jre/legal/java.base/LICENSE", "jre/release"):
         if not (cores / rel).is_file():
             failures.append(f"missing cores/{rel}")
@@ -182,7 +183,7 @@ def main() -> int:
             for failure in failures:
                 print(f"FAIL {failure}")
             return 1
-        print("ok   bundled runtime: jar, executable JRE with CDS, legal notices, no symlinks")
+        print("ok   bundled runtime: jar, executable JRE with CDS, UTF-8 locale, legal notices, no symlinks")
 
     warnings = content_model.manifest_warnings(manifest)
     for warning in sorted(warnings):

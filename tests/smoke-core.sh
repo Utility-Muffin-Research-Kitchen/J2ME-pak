@@ -13,7 +13,10 @@
 #   3. SIGKILL of the frontend takes the JVM with it (PR_SET_PDEATHSIG);
 #   4. a core with nothing beside it and no java on PATH fails cleanly, with no
 #      second copy of the frontend returning from fork(), and refuses the game;
-#   5. a core with no jar anywhere reports it and starts nothing.
+#   5. a core with no jar anywhere reports it and starts nothing;
+#   6. the JVM gets the runtime's own C.UTF-8 locale, replacing an inherited
+#      LC_ALL and LOCPATH, and the locale loads with the device's glibc;
+#   7. a game whose file name is not ASCII opens.
 #
 # The image gets fontconfig and DejaVu from the distribution for this test
 # only: the MLP1 firmware provides fontconfig and its Noto fonts, and Java
@@ -63,7 +66,7 @@ docker run --rm --init --platform "$PLATFORM" \
       -o /tmp/harness /tests/core-harness.c -ldl
 
     mkdir -p /tmp/bios /opt/frontend-libs
-    LD_LIBRARY_PATH=/opt/frontend-libs \
+    LD_LIBRARY_PATH=/opt/frontend-libs LC_ALL=POSIX LOCPATH=/nonexistent \
       /tmp/harness "$CORES/freej2me_plus_libretro.so" /tmp/bios init >/tmp/1.out 2>/tmp/1.err \
       || { cat /tmp/1.err; fail "harness init exited non-zero"; }
     expect /tmp/1.out "java_arg=$CORES/jre/bin/java" "bundled java"
@@ -78,6 +81,10 @@ docker run --rm --init --platform "$PLATFORM" \
     # prefix added by the java launcher re-executing itself.
     expect /tmp/1.out "java_env=LD_LIBRARY_PATH=$CORES/jre/lib/server:$CORES/jre/lib:/opt/frontend-libs" \
       "LD_LIBRARY_PATH"
+    expect /tmp/1.out "java_env=LOCPATH=$CORES/jre/lib/locale" "LOCPATH"
+    expect /tmp/1.out "java_env=LC_ALL=C.UTF-8" "LC_ALL"
+    [ "$(grep -c "^java_env=LOCPATH=" /tmp/1.out)" = 1 ] || fail "inherited LOCPATH kept"
+    [ "$(grep -c "^java_env=LC_ALL=" /tmp/1.out)" = 1 ] || fail "inherited LC_ALL kept"
     expect /tmp/1.out "java_cwd=/tmp/bios" "cwd is the system directory"
     expect /tmp/1.out "java_after_deinit=gone" "deinit stops the JVM"
     [ "$(grep -c "^after_init=" /tmp/1.out)" = 1 ] || fail "init returned more than once"
@@ -130,6 +137,51 @@ docker run --rm --init --platform "$PLATFORM" \
     expect /tmp/4.out "java_pid=0" "no JVM without a jar"
     grep -q "does not exist in the system dir" /tmp/4.err || fail "missing jar not reported"
     ok "no jar anywhere: reported, nothing started"
+
+    # This image has a C.UTF-8 of its own in /usr/lib/locale, where glibc
+    # falls back to when LOCPATH lacks a locale, so the JVM here would find
+    # one even without the pak. The MLP1 firmware has nothing there. Load
+    # the shipped files with the glibc in the sysroot, the firmware version,
+    # with that directory out of the way; the empty LOCPATH shows it is.
+    SYSROOT=/opt/mlp1-toolchain/'"$CROSS"'/sysroot
+    printf "%s\n" "#include <langinfo.h>" "#include <locale.h>" "#include <stdio.h>" \
+      "int main(void) { if (!setlocale(LC_ALL, \"\")) { puts(\"setlocale failed\"); return 1; }" \
+      "  puts(nl_langinfo(CODESET)); return 0; }" >/tmp/codeset.c
+    /opt/mlp1-toolchain/bin/'"$CROSS"'-gcc -O1 -Wall -Werror -o /tmp/codeset /tmp/codeset.c
+    mkdir -p /tmp/no-locales
+    mv /usr/lib/locale /usr/lib/locale.image
+    codeset() { env -i LOCPATH="$1" LC_ALL=C.UTF-8 "$SYSROOT/lib/ld-linux-aarch64.so.1" \
+      --library-path "$SYSROOT/lib" /tmp/codeset || true; }
+    [ "$(codeset "$CORES/jre/lib/locale")" = UTF-8 ] \
+      || fail "the shipped locale does not load: $(codeset "$CORES/jre/lib/locale")"
+    [ "$(codeset /tmp/no-locales)" = "setlocale failed" ] \
+      || fail "the sysroot glibc found a C.UTF-8 without the pak: $(codeset /tmp/no-locales)"
+    mv /usr/lib/locale.image /usr/lib/locale
+    ok "runtime C.UTF-8 locale: selected for the JVM, loads with glibc 2.38"
+
+    # A MIDlet suite whose manifest is all FreeJ2ME reads before naming the
+    # suite in its log. That line means the JVM found and opened the jar.
+    GAMES="/tmp/Roms/J2ME/游戏 ゲーム 게임"
+    mkdir -p "$GAMES" /tmp/bios-cjk
+    python3 -I -c "import sys, zipfile
+with zipfile.ZipFile(sys.argv[1], \"w\") as z:
+    z.writestr(\"META-INF/MANIFEST.MF\", \"Manifest-Version: 1.0\\r\\nMIDlet-Name: Smoke\\r\\nMIDlet-1: Smoke, , Smoke\\r\\n\\r\\n\")
+" "$GAMES/测试 ゲーム 게임.jar"
+    LANG=en_US.UTF-8 /tmp/harness "$CORES/freej2me_plus_libretro.so" /tmp/bios-cjk load \
+      "$GAMES/测试 ゲーム 게임.jar" >/tmp/7.out 2>/tmp/7.err &
+    HARNESS=$!
+    LOG=/tmp/bios-cjk/freej2me_system/FreeJ2ME.log
+    for _ in $(seq 1 1200); do
+      grep -q -e "Loading MIDlet: " -e "not found" "$LOG" 2>/dev/null && break
+      kill -0 "$HARNESS" 2>/dev/null || break
+      sleep 0.1
+    done
+    kill -KILL "$HARNESS" 2>/dev/null || true
+    wait "$HARNESS" 2>/dev/null || true
+    expect /tmp/7.out "load_game=1" "non-ASCII game accepted"
+    grep -q "Loading MIDlet: Smoke | Main Class: Smoke" "$LOG" \
+      || { cat /tmp/7.out /tmp/7.err "$LOG" 2>/dev/null; fail "the JVM did not open a game with a non-ASCII name"; }
+    ok "a game named in Chinese, Japanese and Korean opens"
 
     echo "PASS smoke-core"
   '

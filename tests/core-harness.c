@@ -8,6 +8,8 @@
  *   core-harness <core.so> <system_dir> init   start, describe the JVM, deinit
  *   core-harness <core.so> <system_dir> hold   start, describe, then wait to be killed
  *   core-harness <core.so> <system_dir> load   start, describe, then try retro_load_game()
+ *   core-harness <core.so> <system_dir> load <game>
+ *                                              the same with that game, then wait to be killed
  *
  * Output lines are "key=value". Nothing here is shipped.
  */
@@ -139,7 +141,11 @@ int main(int argc, char **argv)
 	char link[64];
 	ssize_t n;
 
-	if (argc != 4) { fprintf(stderr, "usage: %s <core.so> <system_dir> init|hold|load\n", argv[0]); return 2; }
+	if (argc != 4 && !(argc == 5 && strcmp(argv[3], "load") == 0))
+	{
+		fprintf(stderr, "usage: %s <core.so> <system_dir> init|hold|load [game]\n", argv[0]);
+		return 2;
+	}
 	system_dir = argv[2];
 	snprintf(save_dir, sizeof(save_dir), "%s/saves", system_dir);
 
@@ -166,6 +172,8 @@ int main(int argc, char **argv)
 	{
 		print_nul_list(java, "cmdline", "java_arg", NULL);
 		print_nul_list(java, "environ", "java_env", "LD_LIBRARY_PATH=");
+		print_nul_list(java, "environ", "java_env", "LOCPATH=");
+		print_nul_list(java, "environ", "java_env", "LC_ALL=");
 		snprintf(link, sizeof(link), "/proc/%d/cwd", (int)java);
 		if ((n = readlink(link, cwd, sizeof(cwd) - 1)) > 0) { cwd[n] = '\0'; printf("java_cwd=%s\n", cwd); }
 	}
@@ -180,11 +188,19 @@ int main(int argc, char **argv)
 
 	if (strcmp(argv[3], "load") == 0)
 	{
-		/* Only the failure path is meaningful here: with no JVM running the
-		   core must refuse the game instead of running on without one. */
-		struct retro_game_info info = { "/tmp/harness-game.jar", NULL, 0, NULL };
+		/* Without a game only the failure path is meaningful: with no JVM
+		   running the core must refuse it instead of running on without one.
+		   With one, the JVM opens it while this waits; the caller reads
+		   FreeJ2ME's log, then kills this process and the JVM with it. */
+		struct retro_game_info info = { argc == 5 ? argv[4] : "/tmp/harness-game.jar", NULL, 0, NULL };
 		printf("load_game=%d\n", load_game(&info) ? 1 : 0);
 		fflush(stdout);
+		if (argc == 5)
+		{
+			printf("holding=1\n");
+			fflush(stdout);
+			for (;;) { pause(); }
+		}
 	}
 
 	deinit();

@@ -36,6 +36,8 @@ Roms/J2ME/
   Some DoJa Game.kjx
 ```
 
+File names can be in any language, Chinese, Japanese and Korean included.
+
 A J2ME game is a single `.jar`, sometimes with a `.jad` descriptor beside it.
 You only need the `.jar`. KDDI games come as `.kjx`. Don't unzip either one:
 a `.jar` already is a zip, and the core reads it as it is.
@@ -134,14 +136,16 @@ has no Java. So the core is patched to look beside itself first: when it finds
 `freej2me_plus-lr.jar` and `jre/bin/java` next to its own `.so`, it runs those.
 Removing the pak removes all three. The patch also makes sure Java stops when
 RetroArch does, even when RetroArch is killed outright, and that a game whose
-Java never started ends the session instead of leaving a black screen. It
+Java never started ends the session instead of leaving a black screen, and
+that Java can open a game whose name isn't plain ASCII. It
 changes a few defaults for a handheld like the MLP1, too: **A** is Fire, the
 green LCD backlight effect is off, two MIDI synthesizers start instead of four
 (about half a second faster at every launch), and the pointer can follow the left
 stick. [`core/PROVENANCE.md`](core/PROVENANCE.md) explains each change.
 
 The runtime is Eclipse Temurin 17 linked down to three modules, about 68 MB on
-the card. [`runtime/PROVENANCE.md`](runtime/PROVENANCE.md) says what was kept and
+the card, plus the UTF-8 locale that the MLP1 firmware lacks and Java needs
+for those file names. [`runtime/PROVENANCE.md`](runtime/PROVENANCE.md) says what was kept and
 why.
 
 ## Requirements
