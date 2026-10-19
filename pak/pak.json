@@ -1,7 +1,7 @@
 {
   "name": "J2ME",
   "platform": "mlp1",
-  "pak_version": "0.1.0",
+  "pak_version": "0.1.1",
   "min_leaf_version": "0.13.0",
   "provides": {
     "schema": 1,
