@@ -572,16 +572,50 @@ index 9bbcfc95..e925f515 100644
  
  description = "A fork of FreeJ2ME with improved compatibility and better libretro support. This core emulates Java ME applications and games for Java-based mobile phones."
 diff --git a/src/org/recompile/freej2me/Libretro.java b/src/org/recompile/freej2me/Libretro.java
-index db714c6e..92ab6114 100644
+index db714c6e..57a32fb3 100644
 --- a/src/org/recompile/freej2me/Libretro.java
 +++ b/src/org/recompile/freej2me/Libretro.java
-@@ -175,9 +175,15 @@ public class Libretro
+@@ -20,6 +20,7 @@ import org.recompile.mobile.Mobile;
+ import org.recompile.mobile.MobilePlatform;
+ 
+ import java.io.File;
++import java.io.PrintStream;
+ import java.net.URLDecoder;
+ 
+ public class Libretro
+@@ -49,8 +50,16 @@ public class Libretro
+ 
+ 	LibretroIO lio;
+ 
++	/* Leaf: stdout is the frame pipe, and frames are all that may go there. A
++	 * MIDlet's System.out.println() (Diamond Rush logs every key event) landing
++	 * between a frame's header and its pixels shifts the pixels by the length
++	 * of the line, and the frontend shows a frame of garbled colours. Frames
++	 * keep the real stdout here; main() gives everyone else stderr. */
++	private static final PrintStream frames = System.out;
++
+ 	public static void main(String args[])
+ 	{
++		System.setOut(System.err);
+ 		Mobile.clearOldLog();
+ 		Libretro app = new Libretro(args);
+ 	}
+@@ -91,8 +100,8 @@ public class Libretro
+ 
+ 		lio.start();
+ 
+-		System.out.println("+READY");
+-		System.out.flush();
++		frames.println("+READY");
++		frames.flush();
+ 	}
+ 
+ 	private class LibretroIO implements Runnable
+@@ -175,19 +184,25 @@ public class Libretro
  								buffer = new byte[code];
  								bytesRead = System.in.read(buffer);
  
 -								path = new String(buffer, 0, bytesRead);
--
--								if(Mobile.getPlatform().load(getFormattedLocation(URLDecoder.decode(path, Mobile.textEncoding))))
 +								/* Leaf: these are the file name's bytes as the filesystem has them.
 +								 * Decode them the way java.io.File encodes them back. file.encoding
 +								 * is the game's text encoding (ISO_8859_1, Shift_JIS or EUC_KR), and
@@ -589,11 +623,45 @@ index db714c6e..92ab6114 100644
 +								 * The path comes from realpath(), never a URL. URL-decoding it turned
 +								 * a "+" or "%20" in the name into a space and threw on a bare "%". */
 +								path = new String(buffer, 0, bytesRead, System.getProperty("sun.jnu.encoding"));
-+
+ 
+-								if(Mobile.getPlatform().load(getFormattedLocation(URLDecoder.decode(path, Mobile.textEncoding))))
 +								if(Mobile.getPlatform().load(getFormattedLocation(path)))
  								{
  									if(Mobile.libretroRestartRequested == 1)
  									{
+ 										frameHeader[14] = Mobile.libretroRestartRequested;
+ 										frameHeader[15] = Mobile.libretroEncodingRequested;
+ 
+-										System.out.write(frameHeader, 0, 16);
++										frames.write(frameHeader, 0, 16);
+ 
+-										System.out.write(frameBuffer, 0, lcdData.length*3);
+-										System.out.flush();
++										frames.write(frameBuffer, 0, lcdData.length*3);
++										frames.flush();
+ 										Thread.sleep(Integer.MAX_VALUE); // Wait for as long as possible until the libretro core kills this
+ 									}
+ 								}
+@@ -378,7 +393,7 @@ public class Libretro
+ 									frameHeader[14] = Mobile.libretroRestartRequested;
+ 									frameHeader[15] = Mobile.libretroEncodingRequested;
+ 
+-									System.out.write(frameHeader, 0, 16);
++									frames.write(frameHeader, 0, 16);
+ 
+ 									/* Vibration duration should be set to zero to prevent constant sends of the same data, so update it here */
+ 									Mobile.vibrationDuration = 0;
+@@ -393,8 +408,8 @@ public class Libretro
+ 											frameBuffer[3*i+2] = (byte)((lcdData[i])&0xFF);
+ 										}
+ 
+-										System.out.write(frameBuffer, 0, lcdData.length*3);
+-										System.out.flush();
++										frames.write(frameBuffer, 0, lcdData.length*3);
++										frames.flush();
+ 									}
+ 								}
+ 								catch (Exception e)
 diff --git a/src/org/recompile/mobile/MobilePlatform.java b/src/org/recompile/mobile/MobilePlatform.java
 index f5a1ea8d..576bf34e 100644
 --- a/src/org/recompile/mobile/MobilePlatform.java

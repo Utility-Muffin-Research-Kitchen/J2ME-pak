@@ -63,9 +63,9 @@
   "jar": {
     "ant_target": "jar-libretro",
     "file_name": "freej2me_plus-lr.jar",
-    "sha256": "84d18a07cbdb1d17d5993d3ca09bea42c89af5605042e1e458e0677693b45d84",
-    "size_bytes": 1248466,
-    "note": "Built from `git archive` of source_commit with core/leaf.patch applied. Its Java hunks make Libretro.java decode the game's path with sun.jnu.encoding and stop URL-decoding it, and MobilePlatform.java decode a .jad's file: URI as a URI; build.xml excludes the patched src/libretro. Ant writes entries in directory-scan order with build-time timestamps. scripts/normalize-jar.py rewrites the jar inside the pinned image with sorted entries, fixed timestamps and the image's zlib, so the bytes depend only on the inputs."
+    "sha256": "6d31905c610bc8f6c3aab0bacc615975f92745e63e65ea9fe0a8edeb17a34e49",
+    "size_bytes": 1248545,
+    "note": "Built from `git archive` of source_commit with core/leaf.patch applied. Its Java hunks make Libretro.java decode the game's path with sun.jnu.encoding and stop URL-decoding it, and MobilePlatform.java decode a .jad's file: URI as a URI, and keep stdout for frames only, with System.out pointed at stderr so a MIDlet's prints never land inside a frame; build.xml excludes the patched src/libretro. Ant writes entries in directory-scan order with build-time timestamps. scripts/normalize-jar.py rewrites the jar inside the pinned image with sorted entries, fixed timestamps and the image's zlib, so the bytes depend only on the inputs."
   },
   "locale": {
     "name": "C.utf8",

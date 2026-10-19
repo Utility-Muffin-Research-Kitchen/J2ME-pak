@@ -24,7 +24,7 @@ if the locks disagree.
 `java -jar freej2me_plus-lr.jar` through `PATH` after `chdir()` into
 RetroArch's system directory. Leaf points that directory at the shared
 `BIOS/` folder, and the MLP1 has no Java, so unpatched the core cannot start
-on this device at all. The patch changes six things, all Linux-only:
+on this device at all. The patch changes seven things, all Linux-only:
 
 1. **Find the bundle beside the core.** `dladdr()` on a function inside the
    core gives the `.so`'s own path. If `freej2me_plus-lr.jar` and an
@@ -88,6 +88,20 @@ on this device at all. The patch changes six things, all Linux-only:
    it from its `file:` URI, and it URL-decoded that URI too, which turned a
    `+` into a space again; the patch lets `URI` decode it instead. The
    runtime build applies the same patch before compiling the jar.
+7. **Frames alone on the frame pipe.** The JVM's stdout carries the frames:
+   `Libretro.java` writes a 16-byte header and then the pixels, from its I/O
+   thread. FreeJ2ME never redirected `System.out`, so whatever a MIDlet
+   prints goes into the same pipe, from the MIDlet's own threads. Diamond
+   Rush prints `keyPressed:-5` and the like on every key event. A line that
+   lands between a header and its pixels shifts the whole frame by its
+   length, so the colours rotate (brown bricks turn purple or green) and the
+   picture flickers for a frame (J2ME-pak#4). Lines between frames were
+   already harmless: the core skips anything before a frame's `0xFE` marker.
+   `Libretro.java` now keeps the real stdout in a private stream for the
+   handshake and the frames, and `main()` points `System.out` at stderr
+   before anything else runs, so a MIDlet's prints reach the session log
+   instead. Upstream and the original FreeJ2ME both still write frames
+   through `System.out`.
 
 It also sets `firmware_count = 0` in `freej2me_plus_libretro.info`, because the
 jar is no longer something you place in the system directory.
@@ -126,14 +140,17 @@ platform this patch is built for:
   position, go one row below the last; a tap there misses the canvas. The
   patch stops it on the last row.
 
-`tests/smoke-core.sh` checks the six numbered changes against the packaged
+`tests/smoke-core.sh` checks the seven numbered changes against the packaged
 core in an arm64 container, and fails against the unpatched upstream core on
 the SIGKILL, failed-exec and refused-game cases. For the sixth it loads the
 shipped locale with the sysroot's glibc 2.38, and opens games whose names are
 in Chinese, Japanese and Korean, hold a `+`, a bare `%` or a `%20`, or have a
 `.jad` beside the jar. Without the URL-decoding changes the `+`, `%` and
 `%20` games don't open, and without the `MobilePlatform.java` one the game
-with a `.jad` doesn't. The defaults were checked on
+with a `.jad` doesn't. For the seventh it compiles `tests/midlets/NoisyProbe.java`,
+a MIDlet that paints one colour and prints a Diamond Rush line every
+millisecond, and requires every frame after the first painted one to be that
+colour; the 0.1.0 jar fails it. The defaults were checked on
 an MLP1: key codes logged by a test MIDlet, colours read off the screen,
 music in three MIDI games, and the left-stick pointer tapping a touch build.
 The sixth change was checked on an MLP1 on 2026-10-19 with the smoke test's
@@ -142,6 +159,10 @@ card loads, and a MIDlet named `探针测试` gets `config/探针测试/`, where
 quits with "not found" and fails to create `config/????/`. Fed the same path
 directly, the jar also finds it with `-Dfile.encoding=Shift_JIS` and `EUC_KR`,
 the encodings the core restarts it with for DoJa and KDDI games.
+The seventh was checked on an MLP1 on 2026-10-19 with the same MIDlet through
+the harness's `run` mode: of 1800 frames, the 0.1.0 jar sent 2 clean and 1487
+garbled ones, starting with the bytes of `key`; this jar sent 1794 clean ones
+after its first painted frame and none garbled.
 
 ## Toolchain
 
