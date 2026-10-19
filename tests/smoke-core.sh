@@ -66,7 +66,10 @@ docker run --rm --init --platform "$PLATFORM" \
     LD_LIBRARY_PATH=/opt/frontend-libs \
       /tmp/harness "$CORES/freej2me_plus_libretro.so" /tmp/bios init >/tmp/1.out 2>/tmp/1.err \
       || { cat /tmp/1.err; fail "harness init exited non-zero"; }
-    expect /tmp/1.out "java_arg=$CORES/jre/bin/java" "bundled java"
+    # jre/bin/java is the locale shim: it sets LOCPATH/LANG and execs
+    # java.real, so this is the process the core's exec turned into. Reaching
+    # it proves the shim ran and kept the argument list intact.
+    expect /tmp/1.out "java_arg=$CORES/jre/bin/java.real" "bundled JVM behind the locale shim"
     expect /tmp/1.out "java_arg=-Djava.awt.headless=true" "headless"
     expect /tmp/1.out "java_arg=-XX:+DisplayVMOutputToStderr" "VM output off the pipe"
     expect /tmp/1.out "java_arg=-Xlog:all=warning:stderr" "logging off the pipe"

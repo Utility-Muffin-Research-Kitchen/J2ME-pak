@@ -40,6 +40,10 @@ A J2ME game is a single `.jar`, sometimes with a `.jad` descriptor beside it.
 You only need the `.jar`. KDDI games come as `.kjx`. Don't unzip either one:
 a `.jar` already is a zip, and the core reads it as it is.
 
+Non-ASCII file names work too: Chinese, Japanese and Korean titles load just
+like ASCII ones. The per-game `rms/` and `config/` folders take the MIDlet's
+own name, in the same encoding.
+
 Your saves are kept per game in `Saves/FreeJ2ME-Plus/freej2me/`: each game's
 record stores in `rms/<game name>/`, its FreeJ2ME settings in
 `config/<game name>/`. FreeJ2ME also keeps a `freej2me_system/` folder in

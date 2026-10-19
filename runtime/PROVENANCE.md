@@ -26,6 +26,32 @@ Ant writes entries in directory-scan order with build-time timestamps.
 first, everything else in byte order, one fixed timestamp, the image's zlib.
 Two builds of the same commit then give the same bytes.
 
+### Non-ASCII ROM paths
+
+The core writes the ROM path into the jar's stdin as raw file-system bytes (the
+`0x0A` message in `freej2me_libretro.c`). `Libretro.java` decoded that with
+`new String(buffer, 0, bytesRead)`, i.e. the JVM default charset, which the
+core pins to ISO-8859_1; the UTF-8 bytes of a non-ASCII name became mojibake
+and the `File.isFile()` check failed before the game started. ASCII names
+happened to survive.
+
+`runtime/utf8-paths.patch` decodes that one string as UTF-8. It is applied to
+the `git archive` export before Ant runs, so the jar is the pinned commit plus
+this patch only; `runtime.lock.json` pins the patch by sha256 and records the
+jar hash of the patched build.
+
+Decoding alone is not enough. The JVM also needs `sun.jnu.encoding=UTF-8` to
+turn Java strings back into file-system bytes, both for `File` and for the
+per-game `config/` and `rms/` directories FreeJ2ME names after the MIDlet. That
+charset comes from the C library locale, and a jlink runtime ships no locale
+data, so the pak adds one beside the JRE and starts Java through a shim that
+points glibc at it: `runtime/overlay/`. See
+[`overlay/locale/README.md`](overlay/locale/README.md).
+
+`file.encoding` is deliberately left alone: the core passes ISO-8859_1 and
+FreeJ2ME restarts itself when that changes, so only the file-name charset is
+affected.
+
 ## The runtime
 
 **Eclipse Temurin 17.0.20.1+1** (OpenJDK 17.0.20.1+1, HotSpot) for linux

@@ -24,6 +24,7 @@ die() { echo "build-runtime: $*" >&2; exit 1; }
 command -v docker >/dev/null 2>&1 || die "docker is required"
 command -v python3 >/dev/null 2>&1 || die "python3 is required"
 command -v curl >/dev/null 2>&1 || die "curl is required"
+command -v patch >/dev/null 2>&1 || die "patch is required"
 
 lock_get() {
   python3 -c 'import json,sys
@@ -45,6 +46,11 @@ print(h.hexdigest())' "$1"
 SOURCE_COMMIT="$(lock_get source_commit)"
 [ "$SOURCE_COMMIT" = "$(lock_get source.commit "$CORE_LOCK")" ] \
   || die "runtime.lock.json and core.lock.json pin different FreeJ2ME-Plus commits"
+
+PATCH_FILE="$REPO_ROOT/$(lock_get patch.file)"
+EXPECTED_PATCH_SHA="$(lock_get patch.sha256)"
+[ "$(sha256 "$PATCH_FILE")" = "$EXPECTED_PATCH_SHA" ] \
+  || die "patch sha256 mismatch: $(sha256 "$PATCH_FILE")"
 
 IMAGE="$(lock_get container.image)"
 IMAGE_REF="${IMAGE%%:*}@$(lock_get container.digest)"
@@ -99,6 +105,12 @@ else
   rm -rf "${WORK:?}" "${OUT_DIR:?}"
   mkdir -p "$WORK/src" "$WORK/out" "$OUT_DIR"
   git -C "$SRC_DIR" archive --format=tar "$SOURCE_COMMIT" | tar -x -C "$WORK/src"
+
+  # The core writes the ROM path into the jar's stdin as raw file-system bytes,
+  # and Libretro.java decodes them with the JVM default charset. The core pins
+  # that to ISO-8859_1, so the UTF-8 bytes of a non-ASCII name become mojibake
+  # and File.isFile() fails. Decode that one string as UTF-8 instead.
+  patch -p1 -d "$WORK/src" < "$PATCH_FILE"
 
   echo "build-runtime: building jar and runtime in $IMAGE_REF ($PLATFORM)"
   docker run --rm --platform "$PLATFORM" \

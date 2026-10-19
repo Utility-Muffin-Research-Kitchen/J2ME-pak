@@ -1,0 +1,13 @@
+diff --git a/src/org/recompile/freej2me/Libretro.java b/src/org/recompile/freej2me/Libretro.java
+index db714c6..195f4d2 100644
+--- a/src/org/recompile/freej2me/Libretro.java
++++ b/src/org/recompile/freej2me/Libretro.java
+@@ -175,7 +175,7 @@ public class Libretro
+ 								buffer = new byte[code];
+ 								bytesRead = System.in.read(buffer);
+ 
+-								path = new String(buffer, 0, bytesRead);
++								path = new String(buffer, 0, bytesRead, java.nio.charset.StandardCharsets.UTF_8);
+ 
+ 								if(Mobile.getPlatform().load(getFormattedLocation(URLDecoder.decode(path, Mobile.textEncoding))))
+ 								{

@@ -1,0 +1,32 @@
+#!/bin/sh
+# Start the bundled JVM with a UTF-8 locale.
+#
+# The runtime is a jlink image (java.base, java.desktop, jdk.charsets) and
+# carries no locale data. With none available, glibc's setlocale() fails and
+# the JVM derives sun.jnu.encoding -- the charset it uses to turn file names
+# into bytes -- from the C locale: ANSI_X3.4-1968. Any non-ASCII path then
+# fails to open: the ROM path the core writes into the jar's stdin, and the
+# per-game directories FreeJ2ME creates under config/ and rms/ from the MIDlet
+# name.
+#
+# The C.utf8 locale beside this JRE is enough for glibc to report UTF-8. Only
+# the file-name charset changes; file.encoding stays whatever the core asks
+# for (ISO-8859_1 unless the game selects another), because FreeJ2ME restarts
+# itself when that does not match its text encoding.
+#
+# $0 is the absolute path the core exec'd; no external commands here, so this
+# works under any /bin/sh.
+case "$0" in
+    */*) BIN_DIR=${0%/*} ;;
+    *)   BIN_DIR=. ;;
+esac
+JRE_DIR=${BIN_DIR%/*}
+
+if [ -d "$JRE_DIR/locale/C.utf8" ]; then
+    LOCPATH="$JRE_DIR/locale"
+    export LOCPATH
+    LANG=C.utf8
+    export LANG
+fi
+
+exec "$BIN_DIR/java.real" "$@"

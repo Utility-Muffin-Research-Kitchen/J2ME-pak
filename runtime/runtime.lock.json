@@ -2,6 +2,11 @@
   "schema": 1,
   "note": "Everything needed to reproduce the jar and the Java runtime that ship beside the core. `make runtime` refuses to package either one if its sha256 does not match. The jar comes from the same FreeJ2ME-Plus commit as the core; the build checks that against core/core.lock.json.",
   "source_commit": "baca76a4dda6f30abac67fb4a3db009eed05f91c",
+  "patch": {
+    "file": "runtime/utf8-paths.patch",
+    "sha256": "a4ff1b20d56a1b5443def6fb9d9ac94932bf51dce5803d69adae122ed24a7c14",
+    "note": "One-line change to Libretro.java: the core writes the ROM path into the jar's stdin as raw file-system bytes, and the jar decodes it with the JVM default charset, which the core pins to ISO-8859_1. UTF-8 bytes of a non-ASCII name therefore become mojibake and File.isFile() fails before the game starts. The patch decodes that string as UTF-8. It is applied to the git-archive export, so the jar is built from the pinned commit plus this patch only."
+  },
   "container": {
     "image": "ghcr.io/utility-muffin-research-kitchen/mlp1-toolchain:latest",
     "digest": "sha256:a1510a909283ed2c1ec4cd1845ed0b8ef7ca4731d6886a59c4781271f39515ea",
@@ -63,8 +68,8 @@
   "jar": {
     "ant_target": "jar-libretro",
     "file_name": "freej2me_plus-lr.jar",
-    "sha256": "4eea0f945842238f7acf7344a442003404cec2ef780fff283fd6a9a58974644a",
-    "size_bytes": 1248530,
+    "sha256": "5dd7d5d82d4487b206c2ca4f2ce6fa7fd26d7ad571a174efb343abfa295efa99",
+    "size_bytes": 1248600,
     "note": "Ant writes entries in directory-scan order with build-time timestamps. scripts/normalize-jar.py rewrites the jar inside the pinned image with sorted entries, fixed timestamps and the image's zlib, so the bytes depend only on the inputs."
   },
   "runtime": {

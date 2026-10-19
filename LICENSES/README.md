@@ -12,6 +12,7 @@ redistributing the built pak.
 | MascotME (MascotCapsule V3 renderer), compiled into the jar | MIT | upstream README; headers in its sources |
 | The Java runtime (`cores/jre/`), Eclipse Temurin 17 built from OpenJDK | **GPL-2.0-only WITH Classpath-exception-2.0** | `RUNTIME-LICENSE.txt`; in the package `cores/jre/legal/` per module |
 | Third-party code inside the runtime (FreeType, HarfBuzz, libpng, libjpeg, giflib, Little CMS, ICU data, ...) | Various | `cores/jre/legal/<module>/*.md` in the package |
+| The bundled `C.utf8` locale (`runtime/overlay/locale/C.utf8/`) | **LGPL-2.1-or-later**, as glibc localedata | `runtime/overlay/locale/README.md` |
 | This repository's build system, manifests, scripts | MIT (see `REPO-LICENSE.txt`) | - |
 | `pak/art/J2ME.png` | CC BY-SA 4.0 | `../pak/art/LICENSE-ASSETS.md` |
 | `pak/art/J2ME-photo.png` (AI-generated render) | No rights claimed | `../pak/art/LICENSE-ASSETS.md` |
@@ -23,6 +24,12 @@ the pak has to survive FAT32 and a zip round trip.
 
 The JDK 8 and Apache Ant used to compile the jar are build tools only. Nothing
 from them ships.
+
+The bundled `C.utf8` locale is glibc locale data, not code from the runtime: it
+is regenerated from glibc's own `localedata/` with the distribution's
+`localedef`, and distributed under the LGPL like glibc itself.
+`runtime/overlay/locale/README.md` records the release it came from and the
+exact command that reproduces it.
 
 ## The GPL obligation, concretely
 

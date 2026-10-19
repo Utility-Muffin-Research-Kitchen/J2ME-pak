@@ -22,6 +22,8 @@ BUILD_FILES = (
     "Makefile",
     "core/build-core.sh",
     "runtime/build-runtime.sh",
+    "runtime/overlay/java",
+    "runtime/overlay/locale/README.md",
     "scripts/fetch-source.sh",
     "scripts/normalize-jar.py",
     "scripts/tree-hash.py",
@@ -90,6 +92,9 @@ def main() -> int:
     root = f"freej2me-plus-{commit}"
     patch_file = core_lock["patch"]["file"]
     patch = checked_bytes(repo_root / patch_file, core_lock["patch"]["sha256"])
+    runtime_patch_file = runtime_lock["patch"]["file"]
+    runtime_patch = checked_bytes(
+        repo_root / runtime_patch_file, runtime_lock["patch"]["sha256"])
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with args.output.open("wb") as raw:
@@ -97,19 +102,29 @@ def main() -> int:
             with tarfile.open(fileobj=compressed, mode="w|") as output:
                 add_git_archive(output, args.source, commit, f"{root}/")
                 add_bytes(output, f"{root}/leaf/{patch_file}", patch)
+                add_bytes(output, f"{root}/leaf/{runtime_patch_file}", runtime_patch)
                 add_bytes(output, f"{root}/leaf/core/core.lock.json", core_lock_path.read_bytes())
                 add_bytes(output, f"{root}/leaf/runtime/runtime.lock.json", runtime_lock_path.read_bytes())
                 for rel in BUILD_FILES:
                     path = repo_root / rel
-                    mode = 0o755 if rel.endswith((".sh", ".py")) else 0o644
+                    mode = 0o755 if rel.endswith((".sh", ".py")) or rel == "runtime/overlay/java" else 0o644
                     add_bytes(output, f"{root}/leaf/{rel}", path.read_bytes(), mode)
+                # The bundled locale is a build input for the pak, not for a
+                # binary, but include it so the package can be reproduced too.
+                locale_root = repo_root / "runtime" / "overlay" / "locale" / "C.utf8"
+                for path in sorted(locale_root.rglob("*")):
+                    if path.is_file():
+                        rel = path.relative_to(repo_root).as_posix()
+                        add_bytes(output, f"{root}/leaf/{rel}", path.read_bytes())
                 add_bytes(output, f"{root}/leaf/README.txt", (
                     "The tree above this directory is FreeJ2ME-Plus at commit\n"
                     f"{commit}, unmodified.\n\n"
                     "The libretro core shipped in the J2ME pak is built from it with\n"
                     f"{patch_file} applied (see core/build-core.sh). The jar is built\n"
-                    "from it unmodified with Apache Ant and JDK 8, then normalized by\n"
-                    "scripts/normalize-jar.py (see runtime/build-runtime.sh). The\n"
+                    f"from it with {runtime_patch_file} applied, using Apache Ant and\n"
+                    "JDK 8, then normalized by scripts/normalize-jar.py (see\n"
+                    "runtime/build-runtime.sh). runtime/overlay/ holds the locale and\n"
+                    "the java shim that the packager installs beside the runtime. The\n"
                     "locks name every input by sha256.\n"
                 ).encode("utf-8"))
     return 0

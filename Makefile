@@ -67,6 +67,13 @@ package-mlp1: core runtime
 	@cp "$(BUILD)/core/freej2me_plus_libretro.info" "$(PACKAGE)/info/freej2me_plus_libretro.info"
 	@cp "$(BUILD)/runtime/freej2me_plus-lr.jar" "$(PACKAGE)/cores/freej2me_plus-lr.jar"
 	@cp -Rp "$(BUILD)/runtime/jre" "$(PACKAGE)/cores/jre"
+	@# Non-ASCII ROM paths: the jlink runtime carries no locale data, so start
+	@# the JVM through a shim that points glibc at the bundled C.utf8 locale.
+	@mv "$(PACKAGE)/cores/jre/bin/java" "$(PACKAGE)/cores/jre/bin/java.real"
+	@cp "$(REPO_ROOT)/runtime/overlay/java" "$(PACKAGE)/cores/jre/bin/java"
+	@chmod 755 "$(PACKAGE)/cores/jre/bin/java" "$(PACKAGE)/cores/jre/bin/java.real"
+	@mkdir -p "$(PACKAGE)/cores/jre/locale"
+	@cp -R "$(REPO_ROOT)/runtime/overlay/locale/C.utf8" "$(PACKAGE)/cores/jre/locale/"
 	@cp "$(REPO_ROOT)/LICENSES/CORE-LICENSE.txt" "$(PACKAGE)/LICENSE-CORE.txt"
 	@cp "$(REPO_ROOT)/LICENSES/RUNTIME-LICENSE.txt" "$(PACKAGE)/LICENSE-RUNTIME.txt"
 	@echo "packaged $(PACKAGE)"
