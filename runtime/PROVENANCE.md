@@ -7,13 +7,18 @@ same bytes again. `runtime/runtime.lock.json` is what the build enforces.
 cores/freej2me_plus_libretro.so   the patched core (core/PROVENANCE.md)
 cores/freej2me_plus-lr.jar        FreeJ2ME-Plus, libretro build
 cores/jre/                        Java 17 runtime, trimmed with jlink
+cores/jre/lib/locale/C.utf8/      glibc's C.UTF-8 locale, for file names
 ```
 
 ## The jar
 
 Upstream `build.xml`, target `jar-libretro`, at the same commit as the core
 (`baca76a4dda6f30abac67fb4a3db009eed05f91c`), built from `git archive` of that
-commit rather than the patched working tree.
+commit rather than the core build's working tree, with the same hash-pinned
+`core/leaf.patch` applied. The patch changes one line of Java: `Libretro.java`
+decodes the game's path with `sun.jnu.encoding` instead of the game's text
+encoding (change 6 in `core/PROVENANCE.md`). `build.xml` leaves out
+`src/libretro`, so the patch's C hunks don't reach the jar.
 
 `build.xml` compiles for Java 1.5 against `${java.home}/lib/rt.jar`, which only
 a JDK 8 has, and upstream CI builds with JDK 8. So the jar is compiled with
@@ -90,6 +95,33 @@ bytes vary between dumps of the same tree). It is a cache of classes already
 in `lib/modules`, so the locked tree hash leaves it out and the build only
 requires that it exists. The JVM checks it against the JVM build and the size
 of `lib/modules` at startup, and ignores it if they don't match.
+
+### Locale
+
+`lib/locale/C.utf8/` is glibc's C.UTF-8 locale, 0.36 MB, which the core selects
+for the JVM with `LOCPATH` and `LC_ALL`. Java turns file names into bytes with
+the C library's codeset, and the MLP1 firmware has no compiled locales, not
+even C.UTF-8, so without this the JVM runs with
+`sun.jnu.encoding=ANSI_X3.4-1968` and can't open or create anything whose name
+isn't ASCII. `sun.jnu.encoding` can't be set on the command line; it only
+follows the locale.
+
+The files are compiled during the runtime build with the toolchain sysroot's
+own `localedef`, run through the sysroot's dynamic loader:
+
+```
+localedef --no-archive -i C -f UTF-8 jre/lib/locale/C.utf8
+```
+
+The sysroot's glibc is 2.38, the firmware's version. glibc's binary locale
+format can change between releases, so the image's Ubuntu `localedef` (2.39)
+is not used. Two runs give the same bytes, and the files are part of the
+locked tree hash. With the locale selected `file.encoding` still comes from the
+core's `-Dfile.encoding`, and `user.language` stays `en`.
+
+glibc's locale sources say the Free Software Foundation claims no copyright
+interest in them; the character tables (`i18n_ctype`, the `UTF-8` charmap) are
+generated from the Unicode Character Database.
 
 ### FAT32 safety
 

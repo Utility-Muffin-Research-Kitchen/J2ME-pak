@@ -2,9 +2,9 @@
 """Create the GPL corresponding-source archive for the core and the jar.
 
 Both come from one FreeJ2ME-Plus commit. The archive holds that commit's tree
-exactly as upstream published it, the hash-pinned Leaf patch applied to the
-core, both locks, and every script the two builds run, so the shipped core and
-jar can be rebuilt from it. The Java runtime's source is Adoptium's own tarball,
+exactly as upstream published it, the hash-pinned Leaf patch both builds
+apply, both locks, and every script the two builds run, so the shipped core
+and jar can be rebuilt from it. The Java runtime's source is Adoptium's own tarball,
 which `make dist-source` publishes beside this one.
 """
 from __future__ import annotations
@@ -108,9 +108,9 @@ def main() -> int:
                     f"{commit}, unmodified.\n\n"
                     "The libretro core shipped in the J2ME pak is built from it with\n"
                     f"{patch_file} applied (see core/build-core.sh). The jar is built\n"
-                    "from it unmodified with Apache Ant and JDK 8, then normalized by\n"
-                    "scripts/normalize-jar.py (see runtime/build-runtime.sh). The\n"
-                    "locks name every input by sha256.\n"
+                    "from it with the same patch applied, using Apache Ant and JDK 8,\n"
+                    "then normalized by scripts/normalize-jar.py (see\n"
+                    "runtime/build-runtime.sh). The locks name every input by sha256.\n"
                 ).encode("utf-8"))
     return 0
 

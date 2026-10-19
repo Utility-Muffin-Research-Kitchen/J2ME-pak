@@ -1,5 +1,5 @@
 diff --git a/src/libretro/freej2me_libretro.c b/src/libretro/freej2me_libretro.c
-index d151750..5a54c1f 100755
+index d151750c..b34fe986 100755
 --- a/src/libretro/freej2me_libretro.c
 +++ b/src/libretro/freej2me_libretro.c
 @@ -14,6 +14,9 @@
@@ -23,7 +23,7 @@ index d151750..5a54c1f 100755
  #elif _WIN32
  #include <windows.h>
  #include <tlhelp32.h>
-@@ -44,6 +51,25 @@ const char *freej2meapp = "freej2me_plus-lr.jar";
+@@ -44,6 +51,27 @@ const char *freej2meapp = "freej2me_plus-lr.jar";
  const char *freej2meapp = "freej2me_plus-lr.jar";
  #endif
  
@@ -34,6 +34,7 @@ index d151750..5a54c1f 100755
 + *   cores/freej2me_plus_libretro.so
 + *   cores/freej2me_plus-lr.jar
 + *   cores/jre/bin/java
++ *   cores/jre/lib/locale/C.utf8/
 + *
 + * When both are present the core runs them by absolute path, so neither the
 + * frontend's system directory nor PATH has to hold Java. When either is
@@ -43,13 +44,14 @@ index d151750..5a54c1f 100755
 +static char leafJar[PATH_MAX_LENGTH];
 +static char leafJava[PATH_MAX_LENGTH];
 +static char leafLibraryPath[PATH_MAX_LENGTH * 3];
++static char leafLocalePath[PATH_MAX_LENGTH];
 +extern char **environ;
 +#endif
 +
  retro_environment_t Environ;
  retro_video_refresh_t Video;
  retro_audio_sample_t Audio;
-@@ -133,6 +159,17 @@ bool uses_mouse = true;
+@@ -133,6 +161,17 @@ bool uses_mouse = true;
  bool uses_pointer = false;
  bool booted = false;
  bool restarting = false;
@@ -67,7 +69,7 @@ index d151750..5a54c1f 100755
  bool useAnalogAsEntireKeypad = false; // Enhancement for games like Time Crisis Elite which use the keypad's diagonals exclusively, and not 2+4, 6+8, etc.
  float analogDeadzone = 0.10f; // Additional Deadzone over libretro for input reads
  
-@@ -345,6 +382,83 @@ int freej2me_present(const char *path)
+@@ -345,6 +384,106 @@ int freej2me_present(const char *path)
  #endif
  }
  
@@ -85,6 +87,7 @@ index d151750..5a54c1f 100755
 +	leafJar[0] = '\0';
 +	leafJava[0] = '\0';
 +	leafLibraryPath[0] = '\0';
++	leafLocalePath[0] = '\0';
 +
 +	if (!dladdr((void *)&leaf_find_bundle, &self) || !self.dli_fname) { return; }
 +	if (!realpath(self.dli_fname, coreDir)) { return; }
@@ -126,23 +129,45 @@ index d151750..5a54c1f 100755
 +			"LD_LIBRARY_PATH=%s/lib/server:%s/lib", jreDir, jreDir);
 +	}
 +
++	/*
++	 * The JVM converts every file name through the C library's codeset. A
++	 * firmware with no compiled locales, like the MLP1's, leaves that at
++	 * ASCII whatever LANG says, and any other character in a name becomes
++	 * '?'. The runtime carries a C.UTF-8 locale for that; LOCPATH points
++	 * glibc at it.
++	 */
++	n = snprintf(leafLocalePath, sizeof(leafLocalePath), "LOCPATH=%s/lib/locale", jreDir);
++	if (n < 0 || (size_t)n >= sizeof(leafLocalePath)) { leafLocalePath[0] = '\0'; }
++
 +	log_fn(RETRO_LOG_INFO, "Using the bundled Java runtime: %s\n", leafJava);
 +}
 +
-+/* Leaf: the frontend's environment with LD_LIBRARY_PATH replaced. Built
-+ * before fork() so the child only has to call execve(). */
++/* Leaf: the frontend's environment with LD_LIBRARY_PATH replaced and the
++ * bundled locale selected. LC_ALL rather than LC_CTYPE: an inherited LANG
++ * naming a locale that is not installed makes setlocale(LC_ALL, "") fail
++ * for every category. Built before fork() so the child only has to call
++ * execve(). */
 +static char **leaf_child_environment(void)
 +{
++	static char localeAll[] = "LC_ALL=C.UTF-8";
 +	size_t count = 0, kept = 0, i;
 +	char **env;
 +
 +	while (environ && environ[count]) { count++; }
-+	if (!(env = malloc(sizeof(char *) * (count + 2)))) { return NULL; }
++	if (!(env = malloc(sizeof(char *) * (count + 4)))) { return NULL; }
 +	for (i = 0; i < count; i++)
 +	{
-+		if (strncmp(environ[i], "LD_LIBRARY_PATH=", 16) != 0) { env[kept++] = environ[i]; }
++		if (strncmp(environ[i], "LD_LIBRARY_PATH=", 16) == 0) { continue; }
++		if (leafLocalePath[0] &&
++			(strncmp(environ[i], "LOCPATH=", 8) == 0 || strncmp(environ[i], "LC_ALL=", 7) == 0)) { continue; }
++		env[kept++] = environ[i];
 +	}
 +	env[kept++] = leafLibraryPath;
++	if (leafLocalePath[0])
++	{
++		env[kept++] = leafLocalePath;
++		env[kept++] = localeAll;
++	}
 +	env[kept] = NULL;
 +	return env;
 +}
@@ -151,7 +176,7 @@ index d151750..5a54c1f 100755
  // Fast-forward state tracker
  void check_fast_forwarding(void)
  {
-@@ -623,6 +737,14 @@ static void check_variables()
+@@ -623,6 +762,14 @@ static void check_variables()
  	}
  
  
@@ -166,7 +191,7 @@ index d151750..5a54c1f 100755
  	var.key = "freej2me_pointerxspeed";
  	if (Environ(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
  	{
-@@ -859,6 +981,33 @@ void retro_init(void)
+@@ -859,6 +1006,33 @@ void retro_init(void)
  		Environ(RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY, &systemPath);
  	}
  
@@ -200,7 +225,7 @@ index d151750..5a54c1f 100755
  	/* Check if freej2me's app actually exists and notify the user if it doesn't */
  	char *freej2mePath = malloc(sizeof(char) * PIPE_MAX_LEN);
  	snprintf(freej2mePath, sizeof(char) * PIPE_MAX_LEN, "%s/%s", systemPath, freej2meapp);
-@@ -886,6 +1035,7 @@ void retro_init(void)
+@@ -886,6 +1060,7 @@ void retro_init(void)
  	params[4] = strdup(resArg[0]);
  	params[5] = strdup(resArg[1]);
  	params[6] = NULL; // Null-terminate the array
@@ -208,7 +233,7 @@ index d151750..5a54c1f 100755
  
  	log_fn(RETRO_LOG_INFO, "Preparing to open FreeJ2ME-Plus' Java app.\n");
  
-@@ -920,6 +1070,20 @@ bool retro_load_game(const struct retro_game_info *info)
+@@ -920,6 +1095,20 @@ bool retro_load_game(const struct retro_game_info *info)
  {
  	int len = 0;
  
@@ -229,7 +254,7 @@ index d151750..5a54c1f 100755
  	/* Game info is passed to a global variable to enable restarts */
  	gameinfo = *info;
  	/* Send savepath to java */
-@@ -1017,12 +1181,13 @@ void retro_run(void)
+@@ -1017,12 +1206,13 @@ void retro_run(void)
  		joypad[3] = InputState(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_RIGHT);
  
  		joypad[6] = InputState(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_X);
@@ -245,7 +270,7 @@ index d151750..5a54c1f 100755
  		{
  			// These are more sensitive (lower threshold) in order to minimize cases where the 2,4,6,8 inputs are registered before these.
  			// Num 8 & Num 6
-@@ -1045,7 +1210,7 @@ void retro_run(void)
+@@ -1045,7 +1235,7 @@ void retro_run(void)
  		}
  		else
  		{
@@ -254,7 +279,7 @@ index d151750..5a54c1f 100755
  			joypad[5] = InputState(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_B);  // num 7
  			joypad[10] = InputState(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_L); // num 1
  			joypad[11] = InputState(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_R); // num 3
-@@ -1055,7 +1220,12 @@ void retro_run(void)
+@@ -1055,7 +1245,12 @@ void retro_run(void)
  		joypad[12] = InputState(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_L2);
  		joypad[13] = InputState(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_R2);
  
@@ -268,7 +293,7 @@ index d151750..5a54c1f 100755
  		{
  			joypad[14] = (int) ((InputState(0, RETRO_DEVICE_ANALOG, RETRO_DEVICE_INDEX_ANALOG_LEFT, RETRO_DEVICE_ID_ANALOG_Y ) / 32767.0f) < -analogDeadzone) && !num1pressed && !num3pressed; // Num 2
  			joypad[15] = (int) ((InputState(0, RETRO_DEVICE_ANALOG, RETRO_DEVICE_INDEX_ANALOG_LEFT, RETRO_DEVICE_ID_ANALOG_X ) / 32767.0f) < -analogDeadzone) && !num1pressed && !num7pressed;  // Num 4
-@@ -1074,8 +1244,10 @@ void retro_run(void)
+@@ -1074,8 +1269,10 @@ void retro_run(void)
  		joypad[19] = InputState(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_R3); // CLR
  
  		/* Right analog will control the pointer, freeing the left analog to mirror the D-Pad if needed. */
@@ -281,7 +306,7 @@ index d151750..5a54c1f 100755
  
  		int mouseX = InputState(0, RETRO_DEVICE_MOUSE, 0, RETRO_DEVICE_ID_MOUSE_X);
  		int mouseY = InputState(0, RETRO_DEVICE_MOUSE, 0, RETRO_DEVICE_ID_MOUSE_Y);
-@@ -1105,7 +1277,8 @@ void retro_run(void)
+@@ -1105,7 +1302,8 @@ void retro_run(void)
  		{
  			joymouseAnalog = true;
  			/* This means that the mouse pointer will be visible for 30 frames (half a second, since 60fps is a second) */
@@ -291,7 +316,7 @@ index d151750..5a54c1f 100755
  			joymouseX += joyRx<<1;
  			joymouseY += joyRy<<1;
  
-@@ -1115,7 +1288,8 @@ void retro_run(void)
+@@ -1115,7 +1313,8 @@ void retro_run(void)
  		if(joymouseX<0) { joymouseX=0; }
  		if(joymouseY<0) { joymouseY=0; }
  		if(joymouseX>frameWidth-17) { joymouseX=frameWidth-17; }
@@ -301,7 +326,7 @@ index d151750..5a54c1f 100755
  
  		if(uses_mouse)
  		{
-@@ -1181,11 +1355,13 @@ void retro_run(void)
+@@ -1181,11 +1380,13 @@ void retro_run(void)
  			/* joypad - spot the difference, send corresponding keyup/keydown events */
  			if(joypad[i]!=joypre[i])
  			{
@@ -317,7 +342,7 @@ index d151750..5a54c1f 100755
  					joyevent[0] = 4+joypad[18];
  					joyevent[1] = (joymouseX >> 8) & 0xFF;
  					joyevent[2] = (joymouseX) & 0xFF;
-@@ -1195,6 +1371,8 @@ void retro_run(void)
+@@ -1195,6 +1396,8 @@ void retro_run(void)
  				}
  				else
  				{
@@ -326,7 +351,7 @@ index d151750..5a54c1f 100755
  					joyevent[0] = 2+joypad[i];
  					joyevent[1] = 0;
  					joyevent[2] = 0;
-@@ -1566,10 +1744,28 @@ bool javaOpen(char *cmd, char **params)
+@@ -1566,10 +1769,28 @@ bool javaOpen(char *cmd, char **params)
  	pipe(pRead); /* 0: pRead, 1: pWrite */
  	pipe(pWrite);
  
@@ -355,7 +380,7 @@ index d151750..5a54c1f 100755
  
  		dup2(pWrite[0], fd_stdin);  /* read from parent pWrite */
  		dup2(pRead[1], fd_stdout);  /* write to parent pRead */
-@@ -1579,10 +1775,22 @@ bool javaOpen(char *cmd, char **params)
+@@ -1579,10 +1800,22 @@ bool javaOpen(char *cmd, char **params)
  
  		chdir(systemPath);
  
@@ -378,7 +403,7 @@ index d151750..5a54c1f 100755
  	}
  
  	if(pid>0) /* parent */
-@@ -1591,6 +1799,10 @@ bool javaOpen(char *cmd, char **params)
+@@ -1591,6 +1824,10 @@ bool javaOpen(char *cmd, char **params)
  		close(pWrite[0]);
  	}
  
@@ -390,7 +415,7 @@ index d151750..5a54c1f 100755
  	{
  		Environ(RETRO_ENVIRONMENT_SET_MESSAGE_EXT, (void*)&messages[IMPROPER_CHILDPROC_MSG]);
 diff --git a/src/libretro/freej2me_libretro.h b/src/libretro/freej2me_libretro.h
-index 327207a..8f09a97 100644
+index 327207a5..8f09a976 100644
 --- a/src/libretro/freej2me_libretro.h
 +++ b/src/libretro/freej2me_libretro.h
 @@ -98,9 +98,9 @@ static const struct retro_input_descriptor desc[] =
@@ -530,7 +555,7 @@ index 327207a..8f09a97 100644
  		"freej2me_pointerxspeed",
  		"Pointer X Speed; 4|1|2|8|16"
 diff --git a/src/libretro/freej2me_plus_libretro.info b/src/libretro/freej2me_plus_libretro.info
-index 9bbcfc9..e925f51 100644
+index 9bbcfc95..e925f515 100644
 --- a/src/libretro/freej2me_plus_libretro.info
 +++ b/src/libretro/freej2me_plus_libretro.info
 @@ -26,9 +26,8 @@ hw_render = "false"
@@ -546,3 +571,20 @@ index 9bbcfc9..e925f51 100644
 +firmware_count = 0
  
  description = "A fork of FreeJ2ME with improved compatibility and better libretro support. This core emulates Java ME applications and games for Java-based mobile phones."
+diff --git a/src/org/recompile/freej2me/Libretro.java b/src/org/recompile/freej2me/Libretro.java
+index db714c6e..e60f7fea 100644
+--- a/src/org/recompile/freej2me/Libretro.java
++++ b/src/org/recompile/freej2me/Libretro.java
+@@ -175,7 +175,11 @@ public class Libretro
+ 								buffer = new byte[code];
+ 								bytesRead = System.in.read(buffer);
+ 
+-								path = new String(buffer, 0, bytesRead);
++								/* Leaf: these are the file name's bytes as the filesystem has them.
++								 * Decode them the way java.io.File encodes them back. file.encoding
++								 * is the game's text encoding (ISO_8859_1, Shift_JIS or EUC_KR), and
++								 * with it a name with CJK or accented characters is never found. */
++								path = new String(buffer, 0, bytesRead, System.getProperty("sun.jnu.encoding"));
+ 
+ 								if(Mobile.getPlatform().load(getFormattedLocation(URLDecoder.decode(path, Mobile.textEncoding))))
+ 								{

@@ -45,6 +45,10 @@ print(h.hexdigest())' "$1"
 SOURCE_COMMIT="$(lock_get source_commit)"
 [ "$SOURCE_COMMIT" = "$(lock_get source.commit "$CORE_LOCK")" ] \
   || die "runtime.lock.json and core.lock.json pin different FreeJ2ME-Plus commits"
+PATCH_FILE="$REPO_ROOT/$(lock_get patch.file "$CORE_LOCK")"
+PATCH_SHA="$(lock_get patch.sha256 "$CORE_LOCK")"
+[ "$(sha256 "$PATCH_FILE")" = "$PATCH_SHA" ] \
+  || die "patch sha256 mismatch: $(sha256 "$PATCH_FILE")"
 
 IMAGE="$(lock_get container.image)"
 IMAGE_REF="${IMAGE%%:*}@$(lock_get container.digest)"
@@ -57,6 +61,9 @@ JLINK_OPTIONS="$(lock_get runtime.jlink_options)"
 JRE="$(lock_get runtime.directory)"
 EXPECTED_TREE_SHA="$(lock_get runtime.tree_sha256)"
 CDS_FILE="$(lock_get runtime.cds_file)"
+SYSROOT="$(lock_get locale.sysroot)"
+LOCALE_DIR="$(lock_get locale.directory)"
+LOCALE_NAME="$(lock_get locale.name)"
 
 input() { lock_get "inputs.$1.$2"; }
 JDK8="$(input 0 file)"
@@ -86,7 +93,13 @@ Delete the file and retry if the download was interrupted; otherwise the
 upstream archive changed and the lock must not be updated blindly."
 }
 
-if [ -f "$OUT_DIR/$JAR" ] && [ -x "$OUT_DIR/$JRE/bin/java" ] && [ "${FORCE:-0}" != "1" ]; then
+# What the cached jar and runtime were built from. A changed patch or commit
+# is a rebuild, not a reuse.
+STAMP="$OUT_DIR/.built-from"
+WANT_STAMP="$SOURCE_COMMIT $PATCH_SHA"
+
+if [ -f "$OUT_DIR/$JAR" ] && [ -x "$OUT_DIR/$JRE/bin/java" ] && \
+   [ "$(cat "$STAMP" 2>/dev/null || true)" = "$WANT_STAMP" ] && [ "${FORCE:-0}" != "1" ]; then
   echo "build-runtime: jar and runtime already present (FORCE=1 to rebuild)"
 else
   for index in 0 1 2; do fetch_input "$index"; done
@@ -94,8 +107,9 @@ else
   SRC_DIR="$("$REPO_ROOT/scripts/fetch-source.sh")"
 
   # Build from the pinned commit itself, never the working tree the core
-  # build patches. build.xml excludes src/libretro anyway; this makes it
-  # structural rather than incidental.
+  # build patches, with the hash-checked Leaf patch applied to a fresh copy.
+  # The jar needs its Java hunk; build.xml excludes src/libretro, so the C
+  # hunks change nothing here.
   rm -rf "${WORK:?}" "${OUT_DIR:?}"
   mkdir -p "$WORK/src" "$WORK/out" "$OUT_DIR"
   git -C "$SRC_DIR" archive --format=tar "$SOURCE_COMMIT" | tar -x -C "$WORK/src"
@@ -104,9 +118,15 @@ else
   docker run --rm --platform "$PLATFORM" \
     -v "$DOWNLOADS":/downloads:ro \
     -v "$REPO_ROOT/scripts":/scripts:ro \
+    -v "$PATCH_FILE":/leaf.patch:ro \
     -v "$WORK":/work \
     "$IMAGE_REF" \
     /bin/sh -euc '
+      # Inside the container /work/src is in no repository, so git apply
+      # patches the files as they are.
+      cd /work/src
+      git apply /leaf.patch
+
       mkdir -p /opt/java
       cd /opt/java
       tar -xzf /downloads/'"$JDK8"'
@@ -138,22 +158,34 @@ else
       /work/out/jre-linked/bin/java -Xshare:dump -Xmx128M -Xms128M -Xlog:disable -Xlog:all=error:stderr
       test -f /work/out/jre-linked/'"$CDS_FILE"'
 
+      # A C.UTF-8 locale for the JVM, which the core selects with LOCPATH
+      # and LC_ALL. The MLP1 firmware has no compiled locales, and without
+      # one Java turns every non-ASCII character of a file name into "?".
+      # The sysroot is the firmware'"'"'s glibc version, so its own localedef
+      # writes the binary format the device'"'"'s setlocale() reads.
+      S='"$SYSROOT"'
+      mkdir -p /work/out/jre-linked/'"$LOCALE_DIR"'
+      I18NPATH="$S/usr/share/i18n" "$S/lib/ld-linux-aarch64.so.1" --library-path "$S/lib:$S/usr/lib" \
+        "$S/usr/bin/localedef" --no-archive -i C -f UTF-8 /work/out/jre-linked/'"$LOCALE_DIR/$LOCALE_NAME"'
     '
 
   # Docker Desktop can return before bind-mounted outputs are visible.
   for _ in {1..50}; do
-    [ -f "$WORK/out/$JAR" ] && [ -f "$WORK/out/jre-linked/$CDS_FILE" ] && break
+    [ -f "$WORK/out/$JAR" ] && [ -f "$WORK/out/jre-linked/$CDS_FILE" ] && \
+      [ -f "$WORK/out/jre-linked/$LOCALE_DIR/$LOCALE_NAME/LC_CTYPE" ] && break
     sleep 0.1
   done
 
   cp "$WORK/out/$JAR" "$OUT_DIR/$JAR"
   python3 "$REPO_ROOT/scripts/tree-hash.py" flatten "$WORK/out/jre-linked" "$OUT_DIR/$JRE"
+  echo "$WANT_STAMP" > "$STAMP"
 fi
 
 [ -f "$OUT_DIR/$JAR" ] || die "build produced no $JAR"
 [ -x "$OUT_DIR/$JRE/bin/java" ] || die "build produced no executable $JRE/bin/java"
 [ -f "$OUT_DIR/$JRE/$CDS_FILE" ] || die "runtime has no CDS archive"
 [ -d "$OUT_DIR/$JRE/legal" ] || die "runtime has no legal/ notices"
+[ -f "$OUT_DIR/$JRE/$LOCALE_DIR/$LOCALE_NAME/LC_CTYPE" ] || die "runtime has no $LOCALE_NAME locale"
 if [ "$(lock_get runtime.modules | tr ' ' '\n' | sort | tr '\n' ' ')" != \
      "$(python3 -c 'import sys
 for line in open(sys.argv[1]):

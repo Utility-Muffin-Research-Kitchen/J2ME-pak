@@ -12,6 +12,7 @@ redistributing the built pak.
 | MascotME (MascotCapsule V3 renderer), compiled into the jar | MIT | upstream README; headers in its sources |
 | The Java runtime (`cores/jre/`), Eclipse Temurin 17 built from OpenJDK | **GPL-2.0-only WITH Classpath-exception-2.0** | `RUNTIME-LICENSE.txt`; in the package `cores/jre/legal/` per module |
 | Third-party code inside the runtime (FreeType, HarfBuzz, libpng, libjpeg, giflib, Little CMS, ICU data, ...) | Various | `cores/jre/legal/<module>/*.md` in the package |
+| The C.UTF-8 locale (`cores/jre/lib/locale/C.utf8/`), compiled from glibc 2.38's locale data | No copyright claimed: glibc's locale sources say the FSF claims no copyright interest in them; the character tables are generated from the Unicode Character Database | `../runtime/PROVENANCE.md` |
 | This repository's build system, manifests, scripts | MIT (see `REPO-LICENSE.txt`) | - |
 | `pak/art/J2ME.png` | CC BY-SA 4.0 | `../pak/art/LICENSE-ASSETS.md` |
 | `pak/art/J2ME-photo.png` (AI-generated render) | No rights claimed | `../pak/art/LICENSE-ASSETS.md` |
@@ -34,7 +35,8 @@ pak covers its core:
 
 - `core/core.lock.json` pins the exact FreeJ2ME-Plus commit, and
   `runtime/runtime.lock.json` checks that the jar is built from the same one.
-- `core/leaf.patch` is hash-pinned; it is the only change to that source.
+- `core/leaf.patch` is hash-pinned; it is the only change to that source,
+  and both builds apply it.
 - Both build scripts refuse to package an artifact whose sha256 does not match
   its lock.
 - `make dist-source` writes `freej2me-plus-corresponding-source.tar.gz` to

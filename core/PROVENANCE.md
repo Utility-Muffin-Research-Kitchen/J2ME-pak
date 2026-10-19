@@ -24,7 +24,7 @@ if the locks disagree.
 `java -jar freej2me_plus-lr.jar` through `PATH` after `chdir()` into
 RetroArch's system directory. Leaf points that directory at the shared
 `BIOS/` folder, and the MLP1 has no Java, so unpatched the core cannot start
-on this device at all. The patch changes five things, all Linux-only:
+on this device at all. The patch changes six things, all Linux-only:
 
 1. **Find the bundle beside the core.** `dladdr()` on a function inside the
    core gives the `.so`'s own path. If `freej2me_plus-lr.jar` and an
@@ -63,6 +63,24 @@ on this device at all. The patch changes five things, all Linux-only:
    it and shows a black screen for good. The patched `retro_load_game()`
    returns false when the JVM is not running, and the frontend ends the
    session.
+6. **Open games whatever their file name.** Java converts every file name
+   through the C library's codeset, and the MLP1 firmware has no compiled
+   locales at all, so whatever `LANG` says the JVM runs with
+   `sun.jnu.encoding=ANSI_X3.4-1968` and every character outside ASCII
+   becomes `?`. A game named in Chinese, Japanese or Korean, or with an
+   accented letter, was "not found", and FreeJ2ME quit. A per-game folder with
+   such a name could not be created either, because FAT32 refuses `?`. The
+   runtime now carries a C.UTF-8 locale (`runtime/PROVENANCE.md`), and the
+   child environment selects it with `LOCPATH=jre/lib/locale` and
+   `LC_ALL=C.UTF-8`, replacing any inherited value. `LC_ALL`, because an
+   inherited `LANG` that names a missing locale makes `setlocale(LC_ALL, "")`
+   fail for every category. That alone isn't enough: `Libretro.java` decoded
+   the path the core sends with `file.encoding`, which FreeJ2ME uses as the
+   game's text encoding (`ISO_8859_1`, `Shift_JIS` or `EUC_KR`), so the
+   UTF-8 bytes of the name came back as other characters. The patch's one
+   Java hunk decodes them with `sun.jnu.encoding`, the exact inverse of what
+   `java.io.File` does with the string. The runtime build applies the same
+   patch before compiling the jar.
 
 It also sets `firmware_count = 0` in `freej2me_plus_libretro.info`, because the
 jar is no longer something you place in the system directory.
@@ -101,11 +119,19 @@ platform this patch is built for:
   position, go one row below the last; a tap there misses the canvas. The
   patch stops it on the last row.
 
-`tests/smoke-core.sh` checks the five numbered changes against the packaged
+`tests/smoke-core.sh` checks the six numbered changes against the packaged
 core in an arm64 container, and fails against the unpatched upstream core on
-the SIGKILL, failed-exec and refused-game cases. The defaults were checked on
+the SIGKILL, failed-exec and refused-game cases. For the sixth it loads the
+shipped locale with the sysroot's glibc 2.38, and opens a game whose name is
+in Chinese, Japanese and Korean. The defaults were checked on
 an MLP1: key codes logged by a test MIDlet, colours read off the screen,
 music in three MIDI games, and the left-stick pointer tapping a touch build.
+The sixth change was checked on an MLP1 on 2026-10-19 with the smoke test's
+harness and the packaged core: a jar named `测试 ゲーム 게임.jar` on the vfat
+card loads, and a MIDlet named `探针测试` gets `config/探针测试/`, where 0.1.0
+quits with "not found" and fails to create `config/????/`. Fed the same path
+directly, the jar also finds it with `-Dfile.encoding=Shift_JIS` and `EUC_KR`,
+the encodings the core restarts it with for DoJa and KDDI games.
 
 ## Toolchain
 

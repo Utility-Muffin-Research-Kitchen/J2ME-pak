@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "note": "Everything needed to reproduce the jar and the Java runtime that ship beside the core. `make runtime` refuses to package either one if its sha256 does not match. The jar comes from the same FreeJ2ME-Plus commit as the core; the build checks that against core/core.lock.json.",
+  "note": "Everything needed to reproduce the jar and the Java runtime that ship beside the core. `make runtime` refuses to package either one if its sha256 does not match. The jar comes from the same FreeJ2ME-Plus commit as the core, with the same hash-pinned core/leaf.patch applied; the build checks both against core/core.lock.json.",
   "source_commit": "baca76a4dda6f30abac67fb4a3db009eed05f91c",
   "container": {
     "image": "ghcr.io/utility-muffin-research-kitchen/mlp1-toolchain:latest",
@@ -63,9 +63,18 @@
   "jar": {
     "ant_target": "jar-libretro",
     "file_name": "freej2me_plus-lr.jar",
-    "sha256": "4eea0f945842238f7acf7344a442003404cec2ef780fff283fd6a9a58974644a",
-    "size_bytes": 1248530,
-    "note": "Ant writes entries in directory-scan order with build-time timestamps. scripts/normalize-jar.py rewrites the jar inside the pinned image with sorted entries, fixed timestamps and the image's zlib, so the bytes depend only on the inputs."
+    "sha256": "240d39c921c6730d82d6db854d56a2a0afdf35c697569df3a53f0ff576a538b0",
+    "size_bytes": 1248586,
+    "note": "Built from `git archive` of source_commit with core/leaf.patch applied. Its one Java change makes Libretro.java decode the game's path with sun.jnu.encoding; build.xml excludes the patched src/libretro. Ant writes entries in directory-scan order with build-time timestamps. scripts/normalize-jar.py rewrites the jar inside the pinned image with sorted entries, fixed timestamps and the image's zlib, so the bytes depend only on the inputs."
+  },
+  "locale": {
+    "name": "C.utf8",
+    "directory": "lib/locale",
+    "sysroot": "/opt/mlp1-toolchain/aarch64-buildroot-linux-gnu/sysroot",
+    "command": "localedef --no-archive -i C -f UTF-8, the sysroot's own binary run through the sysroot's dynamic loader, with I18NPATH at the sysroot's usr/share/i18n",
+    "glibc": "2.38 (Buildroot), the same version as the MLP1 firmware's /lib/libc.so.6",
+    "license": "glibc locale data. Each source file says the Free Software Foundation claims no copyright interest in it; the character tables in i18n_ctype and the UTF-8 charmap are generated from the Unicode Character Database.",
+    "note": "The core runs the JVM with LOCPATH=<jre>/lib/locale and LC_ALL=C.UTF-8. The MLP1 firmware has no compiled locales at all, so without these the JVM's sun.jnu.encoding is ANSI_X3.4-1968 whatever LANG says, and every non-ASCII character in a file name becomes '?'. glibc's binary locale format can change between versions, which is why localedef comes from the device's glibc and not the image's Ubuntu userland. Two runs give identical files. The files are part of runtime.tree_sha256."
   },
   "runtime": {
     "modules": ["java.base", "java.desktop", "jdk.charsets"],
@@ -76,10 +85,10 @@
     "cds_file": "lib/server/classes.jsa",
     "cds_note": "JDK 17 does not write this archive byte-for-byte reproducibly here: two dumps of the same tree differ in about 20 bytes (header CRCs, one header word, a few archived-heap bytes), and -Xint makes it worse. It is a derived cache of classes already in lib/modules, so tree_sha256 leaves it out and the build only requires that it exists. The JVM validates it at startup (JVM build and modules size) and ignores it, with a warning on stderr, if it does not match.",
     "directory": "jre",
-    "tree_sha256": "35051d7a8002310382016b1bb6dd44cf6446a3e676d40f0bbe7d0b3fae2fcace",
+    "tree_sha256": "23f34412c6bb87b791c61dd888595fb55d64ad0d9ab3280850ac1b278ec1eadf",
     "tree_sha256_note": "scripts/tree-hash.py: for each regular file in byte order of its relative path, rel || 0x00 || mode (4 octal digits) || 0x00 || uint64_be(size) || bytes. Symlinks are refused; the build replaces jlink's legal-notice symlinks with copies so the tree is FAT32-safe.",
-    "size_bytes": 56084259,
+    "size_bytes": 56447528,
     "cds_size_bytes": 11665408,
-    "size_note": "67.7 MB on disk with the CDS archive, recorded from two FORCE=1 rebuilds that agree (2026-10-18). The Zulu build of the same version and options was 67.3 MB."
+    "size_note": "68.1 MB on disk with the CDS archive and the 0.36 MB C.utf8 locale, recorded from a FORCE=1 rebuild and a build in a fresh BUILD_DIR that agree (2026-10-19). The Zulu build of the same version and options, without the locale, was 67.3 MB."
   }
 }
