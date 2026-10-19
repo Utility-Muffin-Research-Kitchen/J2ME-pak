@@ -137,7 +137,7 @@ has no Java. So the core is patched to look beside itself first: when it finds
 Removing the pak removes all three. The patch also makes sure Java stops when
 RetroArch does, even when RetroArch is killed outright, and that a game whose
 Java never started ends the session instead of leaving a black screen, and
-that Java can open a game whose name isn't plain ASCII. It
+that Java can open a game whose name isn't plain ASCII or holds a `+` or `%`. It
 changes a few defaults for a handheld like the MLP1, too: **A** is Fire, the
 green LCD backlight effect is off, two MIDI synthesizers start instead of four
 (about half a second faster at every launch), and the pointer can follow the left

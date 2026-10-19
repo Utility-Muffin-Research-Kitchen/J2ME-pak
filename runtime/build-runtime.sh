@@ -108,7 +108,7 @@ else
 
   # Build from the pinned commit itself, never the working tree the core
   # build patches, with the hash-checked Leaf patch applied to a fresh copy.
-  # The jar needs its Java hunk; build.xml excludes src/libretro, so the C
+  # The jar needs its Java hunks; build.xml excludes src/libretro, so the C
   # hunks change nothing here.
   rm -rf "${WORK:?}" "${OUT_DIR:?}"
   mkdir -p "$WORK/src" "$WORK/out" "$OUT_DIR"
